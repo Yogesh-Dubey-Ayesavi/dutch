@@ -1,1 +1,1 @@
-{"name":"@dutch/client","private":true,"version":"1.0.0","type":"module"}
+{"name":"@dutch/client","private":true,"version":"1.0.0","type":"module","dependencies":{"@dicebear/core":"^10.7.0","@dicebear/styles":"^10.6.0"}}

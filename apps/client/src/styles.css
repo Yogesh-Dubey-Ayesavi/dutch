@@ -31,3 +31,53 @@ h1,h2,h3{letter-spacing:-.7px;font-weight:650}h1 em,h2 em{font-style:normal;colo
 
 /* Printed playing cards: fixed artwork coordinates, paper edges, traditional inks. */
 .playing-card{border-radius:6px;box-shadow:0 2px 0 #b4b0a6,0 3px 0 #e6e1d7,0 7px 14px #0005;isolation:isolate}.playing-card.card-front{background:linear-gradient(115deg,#fffefb 0%,#fffdf7 55%,#f4f0e7 100%);color:#151923;border:1px solid #d8d4ca}.playing-card.card-front.red{background:linear-gradient(115deg,#fffefb 0%,#fffdf7 55%,#f4f0e7 100%);color:#b51e32;border-color:#d8d4ca}.playing-card:after{content:'';position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 1px #ffffffb3;pointer-events:none;z-index:4}.card-face-art,.card-back-art{display:block;width:100%;height:100%;position:absolute;inset:0;pointer-events:none;overflow:hidden}.playing-card.card-back{border:4px solid #fffaf0;background-color:#202631;background-image:repeating-linear-gradient(45deg,transparent,transparent 3px,#ffffff08 3px,#ffffff08 3.6px);color:#eee9da}.playing-card.card-back.back-red{background-color:#8f182c;color:#ffedda;background-image:repeating-linear-gradient(45deg,transparent,transparent 3px,#ffdec611 3px,#ffdec611 3.7px),repeating-linear-gradient(-45deg,transparent,transparent 3px,#ffdec60c 3px,#ffdec60c 3.7px)}.playing-card.card-back.back-black{background-color:#202631;color:#e4e6e9;background-image:radial-gradient(circle,#dce2eb18 .6px,transparent 1px);background-size:4px 4px}.playing-card.small.card-back{border-width:2px}.playing-card.joker-card{box-shadow:0 0 0 2px #b1caff,0 2px 0 #b4b0a6,0 7px 14px #0005}.playing-card .joker-badge{bottom:2%;font-size:6px;padding:2px 5px;border-radius:3px;background:#283c62;letter-spacing:.35px}.hero-fan>.card-back{border-width:6px}.deck-pile{box-shadow:2px 3px 0 #d5d1c6,4px 5px 0 #a2a79d,6px 7px 0 #d5d1c6,0 10px 15px #0005}.playing-card.selected{box-shadow:0 0 0 3px #bad3ff,0 3px 0 #c1c5cc,0 9px 18px #0005}.small .card-back-art{opacity:1}@media(max-width:620px){.playing-card.card-back{border-width:3px}.playing-card.small.card-back{border-width:1.5px}.playing-card .joker-badge{font-size:5px;padding:1px 3px}}@media(prefers-reduced-motion:reduce){.playing-card{transition:none}}
+
+/* Compact, playable table layout */
+.lobby-screen{align-items:start;min-height:0;padding-block:clamp(28px,5vh,58px) 42px;}
+.lobby-seats{align-self:start;width:100%;height:max-content;min-height:0;padding:24px;background:#1c2432;border:1px solid #64748b55;border-radius:14px;}
+.lobby-title{margin-bottom:20px;}
+.lobby-start{margin-top:20px;}
+.avatar>img,.avatar-option>img{display:block;width:100%;height:100%;object-fit:cover;border-radius:inherit;}
+.avatar{overflow:visible;}
+.avatar>img{border-radius:50%;overflow:hidden;background:#dce7f2;}
+.avatar-option{padding:0;overflow:hidden;border-radius:50%;opacity:.72;}
+.avatar-option.active{opacity:1;border-color:#abcaff;box-shadow:0 0 0 2px #abcaff55;}
+.avatar-option>img{border-radius:50%;}
+.table-bottom{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:850px;margin:14px auto 0;padding:10px 0 0;border-top:1px solid #64748b33;}
+.table-bottom>span{font-size:11px;color:#c1cada;}
+@media(max-width:850px){
+ .lobby-screen{align-items:stretch;min-height:0;padding:28px 5% 34px;gap:22px;}
+ .lobby-seats{padding:18px;border-radius:12px;}
+ .local-area{grid-template-columns:minmax(0,1fr) auto;align-items:center;padding:8px 4px 12px;gap:12px;}
+ .local-hand{grid-column:1/-1;display:flex;flex-wrap:nowrap;justify-content:flex-start;gap:7px;width:100%;max-width:100%;overflow-x:auto;overflow-y:hidden;padding:5px 3px 12px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;}
+ .hand-card{flex:0 0 auto;scroll-snap-align:center;}
+ .hand-card>.playing-card{width:clamp(46px,calc((100vw - 86px)/5),74px);height:auto;aspect-ratio:100/144;max-height:none;}
+ .hand-card>span{margin-top:5px;}
+ .local-actions{grid-column:2;grid-row:1;max-width:min(42vw,220px);}
+ .local-profile{grid-column:1;grid-row:1;}
+ .local-hand{grid-row:2;}
+ .play-controls{display:none;}
+ .game-screen{padding:16px 4% 14px;}
+ .table-bottom{margin-top:10px;}
+}
+@media(max-width:620px){
+ .lobby-screen{padding:20px 4% 26px;gap:18px;}
+ .lobby-seats{padding:15px;}
+ .lobby-title{margin-bottom:12px;}
+ .guest{padding:11px 0;}
+ .empty-seat{padding:12px 0;}
+ .lobby-start{margin-top:12px;}
+ .game-topbar{align-items:center;}
+ .game-metadata{width:auto;gap:10px;padding:0;}
+ .game-metadata .connection-chip{display:none;}
+ .table-scene{margin-top:12px;}
+ .instruction-bar{margin:10px 3px 5px;min-height:28px;line-height:1.4;font-size:11px;}
+ .local-area{padding:4px 0 7px;gap:8px;}
+ .local-hand{gap:5px;padding-bottom:8px;}
+ .hand-card>.playing-card{width:clamp(43px,calc((100vw - 58px)/6),58px);}
+ .local-actions{max-width:42vw;gap:5px;}
+ .local-actions>.gold-button,.local-actions>.secondary-button{font-size:10px;min-height:38px;padding:8px;}
+ .local-actions>small{display:none;}
+ .table-bottom{font-size:9px;}
+ .table-bottom>span{font-size:9px;}
+}
