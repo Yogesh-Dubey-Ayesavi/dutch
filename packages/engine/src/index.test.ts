@@ -30,15 +30,14 @@ describe('turns and confidentiality',()=>{
  it('reveals a drawn card only to its owner',()=>{const s=action(playing(),{type:'draw',source:'deck'});expect(viewFor(s,'p0').drawn?.card).not.toBeNull();expect(viewFor(s,'p1').drawn?.card).toBeNull();expect('deck' in viewFor(s,'p0')).toBe(false);expect(viewFor(s,'p0').players.flatMap(p=>p.hand).every(c=>c===null)).toBe(true);conservation(s);});
  it('allows swapping and advances the turn',()=>{const s=action(playing(),{type:'draw',source:'deck'});const old=s.players[0].hand[3];const after=action(s,{type:'swap',index:3});expect(after.players[0].hand[3]).toEqual(s.drawn!.card);expect(after.discard.at(-1)).toEqual(old);expect(after.turn).toBe(1);conservation(after);});
  it('requires swapping a taken discard',()=>{const s=action(playing(),{type:'draw',source:'discard'});expect(()=>action(s,{type:'discard'})).toThrow();conservation(action(s,{type:'swap',index:0}));});
- it('does not trigger a power unless explicitly requested',()=>{const s=withDrawRank(7);expect(action(s,{type:'discard'}).phase).toBe('playing');expect(action(s,{type:'discard',usePower:true}).phase).toBe('power');});
+ it('gives no power to drawn 7, 8, 9, or 10',()=>{for(const rank of [7,8,9,10]){const s=withDrawRank(rank);const after=action(s,{type:'discard',usePower:true});expect(after.phase).toBe('playing');expect(after.power).toBeNull();expect(after.turn).toBe(1);conservation(after);}});
  it('disabled powers never trigger',()=>{const s=withDrawRank(12);s.rules.powers=false;expect(action(s,{type:'discard',usePower:true}).phase).toBe('playing');});
  it('expires a held card, preserving the deck',()=>{const s=action(playing(),{type:'draw',source:'deck'});const expired=expireTurn(s,50000);expect(expired.turn).toBe(1);expect(expired.drawn).toBeNull();conservation(expired);});
  it('does not expire before the deadline',()=>{const s=playing();expect(expireTurn(s,10)).toBe(s);});
  it('recycles only discards below the visible top card',()=>{let s=playing();while(s.deck.length){s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});}const top=s.discard.at(-1);s=action(s,{type:'draw',source:'deck'});expect(s.discard).toEqual([top]);conservation(s);});
 });
 describe('powers and matching',()=>{
- it('supports a private own-card peek',()=>{let s=action(withDrawRank(7),{type:'discard',usePower:true});expect(()=>action(s,{type:'powerPeek',playerId:'p1',index:0})).toThrow();s=action(s,{type:'powerPeek',playerId:'p0',index:0});expect(s.turn).toBe(1);expect(viewFor(s,'p0').reveals).toHaveLength(1);expect(viewFor(s,'p1').reveals).toHaveLength(0);});
- it('supports an opponent peek without leaking to that opponent',()=>{let s=action(withDrawRank(9),{type:'discard',usePower:true});s=action(s,{type:'powerPeek',playerId:'p1',index:2});expect(viewFor(s,'p0').players[1].hand[2]).not.toBeNull();expect(viewFor(s,'p1').players[1].hand[2]).toBeNull();});
+ it('supports a private own-card peek from a discarded hand Jack',()=>{let s=playing();const ix=s.deck.findIndex(c=>c.rank===11);[s.players[0].hand[0],s.deck[ix]]=[s.deck[ix],s.players[0].hand[0]];s=drawRank(s,2);s=action(s,{type:'swap',index:0});expect(()=>action(s,{type:'powerPeek',playerId:'p1',index:0})).toThrow();s=action(s,{type:'powerPeek',playerId:'p0',index:0});expect(s.turn).toBe(1);expect(viewFor(s,'p0').reveals).toHaveLength(1);expect(viewFor(s,'p1').reveals).toHaveLength(0);});
  it('lets a queen swap any two cards, including two opponents',()=>{let s=handPower(playing(3));const a=s.players[1].hand[0],b=s.players[2].hand[1];s=action(s,{type:'blindSwap',firstPlayerId:'p1',firstIndex:0,secondPlayerId:'p2',secondIndex:1});expect(s.players[1].hand[0]).toEqual(b);expect(s.players[2].hand[1]).toEqual(a);expect(viewFor(s,'p0').players.flatMap(p=>p.hand).every(c=>c===null)).toBe(true);conservation(s);});
  it('rejects swapping a card with itself',()=>{const s=handPower();expect(()=>action(s,{type:'blindSwap',firstPlayerId:'p0',firstIndex:0,secondPlayerId:'p0',secondIndex:0})).toThrow();});
  it('allows skipping or timing out a power',()=>{const s=handPower();expect(action(s,{type:'skipPower'}).turn).toBe(1);expect(expireTurn(s,50000).turn).toBe(1);});
@@ -96,6 +95,31 @@ describe('two-deck backs and public metadata',()=>{
 });
 
 describe('free throws',()=>{
+ it('throws a hand pair on the last Dutch turn while retaining an unrelated deck draw',()=>{
+  let s=playing();
+  for(const [index,rank] of [6,6,3,4].entries()){
+   const deckIndex=s.deck.findIndex(c=>c.rank===rank);
+   [s.players[1].hand[index],s.deck[deckIndex]]=[s.deck[deckIndex],s.players[1].hand[index]];
+  }
+  s=action(s,{type:'call'});
+  s=drawRank(s,2);
+  const held=s.drawn!.card;
+  s=action(s,{type:'burn',indices:[0,1],match:'pair',targetId:held.id,handRevision:s.players[1].handRevision});
+  expect(s.players[1].hand.map(c=>c.rank)).toEqual([3,4]);
+  expect(s.drawn?.card).toEqual(held);
+  expect(s.turn).toBe(1);
+  expect(s.caller).toBe('p0');
+  s=action(s,{type:'discard'});
+  expect(s.phase).toBe('results');
+  expect(s.history[0].hands.p1.map(c=>c.rank)).toEqual([3,4]);
+  conservation(s);
+ });
+ it('requires a held deck draw and two selected cards for a pair throw',()=>{
+  const s=playing();
+  expect(()=>action(s,{type:'burn',indices:[0,1],match:'pair'})).toThrow('Draw from the deck');
+  const drawn=drawRank(s,2);
+  expect(()=>action(drawn,{type:'burn',indices:[0],match:'pair'})).toThrow('at least two');
+ });
  it('enables same-number free throws on anyone’s turn by default',()=>{
   expect(DEFAULT_RULES.burning).toBe('rank');expect(DEFAULT_RULES.burnAnytime).toBe(true);
  });

@@ -11,7 +11,7 @@ export interface HandPower {kind:'blindSwap'|'ownPeek';ownerId:string;remaining:
 export interface SwapPair {firstPlayerId:string;firstIndex:number;secondPlayerId:string;secondIndex:number}
 export interface SwapEvent {version:number;actorId:string;pairs:(SwapPair & {firstBack:CardBack;secondBack:CardBack})[];highlightSlots?:{playerId:string;index:number;back:CardBack}[];discardChanged?:boolean;label?:string}
 export interface Game { phase:'lobby'|'peeking'|'playing'|'power'|'results'|'finished'|'interrupted'; players:Player[]; hostId:string; rules:Rules; round:number; deck:Card[]; discard:Card[]; turn:number; turns:number; drawn:{card:Card;fromDeck:boolean}|null; handPower:HandPower|null;handPowerQueue:HandPower[];swapEvent:SwapEvent|null; power:'ownPeek'|'otherPeek'|'blindSwap'|null; reveals:Record<string,{owner:string;index:number;card:Card}[]>; caller:string|null; dutchWindowFor:string|null; finalTurns:number; deadline:number|null; version:number; history:RoundScore[]; message:string }
-export type Action = {type:'ready';ready:boolean}|{type:'rules';rules:Partial<Rules>}|{type:'start'}|{type:'initialPeek';index:number}|{type:'finishPeek'}|{type:'draw';source:'deck'|'discard'}|{type:'swap';index?:number;indices?:number[];handRevision?:number}|{type:'reorder';from:number;to:number;handRevision:number}|{type:'discard';usePower?:boolean}|{type:'powerPeek';playerId:string;index:number}|{type:'blindSwap';firstPlayerId:string;firstIndex:number;secondPlayerId:string;secondIndex:number}|{type:'blindSwapBatch';pairs:SwapPair[];revisions?:Record<string,number>}|{type:'skipPower'}|{type:'burn';index?:number;indices?:number[];handRevision?:number;targetId?:string;match?:'drawn'|'discard'}|{type:'call'}|{type:'nextRound'}|{type:'rematch'};
+export type Action = {type:'ready';ready:boolean}|{type:'rules';rules:Partial<Rules>}|{type:'start'}|{type:'initialPeek';index:number}|{type:'finishPeek'}|{type:'draw';source:'deck'|'discard'}|{type:'swap';index?:number;indices?:number[];handRevision?:number}|{type:'reorder';from:number;to:number;handRevision:number}|{type:'discard';usePower?:boolean}|{type:'powerPeek';playerId:string;index:number}|{type:'blindSwap';firstPlayerId:string;firstIndex:number;secondPlayerId:string;secondIndex:number}|{type:'blindSwapBatch';pairs:SwapPair[];revisions?:Record<string,number>}|{type:'skipPower'}|{type:'burn';index?:number;indices?:number[];handRevision?:number;targetId?:string;match?:'drawn'|'discard'|'pair'}|{type:'call'}|{type:'nextRound'}|{type:'rematch'};
 export class GameError extends Error {}
 const assert:(condition:unknown,message:string)=>asserts condition = (condition,message)=>{if(!condition)throw new GameError(message)};
 export const DECK_SIZE=104;
@@ -36,7 +36,7 @@ function score(s:Game) {const jokerRank=jokerRankForRound(s.round);s.dutchWindow
 function advance(s:Game,now:number){s.dutchWindowFor=s.players[s.turn]?.id??null;s.reveals={};s.drawn=null;s.handPower=null;s.handPowerQueue=[];s.power=null;s.turns++;if(s.caller){s.finalTurns--;if(s.finalTurns<=0){score(s);return;}}if(s.turns>=s.rules.maxTurns){score(s);return;}s.turn=(s.turn+1)%s.players.length;s.phase='playing';s.deadline=now+s.rules.turnSeconds*1000;s.message=s.caller?'The last lap. Make your turn count.':`${s.players[s.turn].name}, trust your instinct.`;}
 export function canCallDutch(s:{phase:Game['phase'];caller:string|null;drawn:unknown;dutchWindowFor:string|null;players:{id:string}[];turn:number},id:string):boolean {return s.phase==='playing'&&!s.caller&&!s.drawn&&(s.players[s.turn]?.id===id||s.dutchWindowFor===id);}
 export function powerOwnerId(s:{phase:Game['phase'];handPower:Game['handPower'];players:{id:string}[];turn:number}):string|null {return s.phase==='power'?(s.handPower?.ownerId??s.players[s.turn]?.id??null):null;}
-export function powerForRank(rank:number):Game['power'] {return rank===7||rank===8||rank===11?'ownPeek':rank===9||rank===10?'otherPeek':rank===12?'blindSwap':null;}
+export function powerForRank(rank:number):Game['power'] {return rank===11?'ownPeek':rank===12?'blindSwap':null;}
 function startHandPower(s:Game,ownerId:string,rank:number,count:number,resume:HandPower['resume'],now:number){
  if(!s.rules.powers||count===0||(rank!==11&&rank!==12))return false;
  const kind=rank===12?'blindSwap':'ownPeek';
@@ -78,7 +78,7 @@ export function applyAction(g:Game,actor:string,a:Action,now:number,cards?:Card[
   const kept=s.drawn.card;const automaticMatch=kept.rank===outgoing[0].rank;const replaceAt=indices[0];if(automaticMatch)s.discard.push(kept);s.discard.push(...outgoing);p.hand=p.hand.flatMap((card,i)=>indices.includes(i)?(!automaticMatch&&i===replaceAt?[kept]:[]):[card]);s.drawn=null;s.reveals={};s.swapEvent={version:s.version+1,actorId:actor,pairs:[],highlightSlots:automaticMatch?[]:[{playerId:p.id,index:replaceAt,back:kept.back}],discardChanged:automaticMatch,label:automaticMatch?'Matching cards discarded':'Card exchanged'};
   const cancelled=cancelDutchIfSwapped(s,[p.id]);if(!startHandPower(s,actor,outgoing[0].rank,outgoing.length,'advance',now)){if(!p.hand.length)score(s);else advance(s,now);if(automaticMatch)s.message=`Automatic match — ${p.name} discarded the draw and ${outgoing.length} matching hand card${outgoing.length===1?'':'s'}.`;}if(cancelled)s.message='Dutch cancelled — the caller’s hand was swapped. Play continues.';
  }break;
- case 'discard':playing();turn();assert(s.drawn,'Draw a card first.');assert(s.drawn.fromDeck,'A card from the discard pile must be swapped.');{const rank=s.drawn.card.rank;s.discard.push(s.drawn.card);s.drawn=null;const power=powerForRank(rank);if(a.usePower&&s.rules.powers&&power&&rank!==12&&rank!==11){s.phase='power';s.power=power;s.message='A little mischief. Choose your move.';}else advance(s,now);}break;
+ case 'discard':playing();turn();assert(s.drawn,'Draw a card first.');assert(s.drawn.fromDeck,'A card from the discard pile must be swapped.');s.discard.push(s.drawn.card);s.drawn=null;advance(s,now);break;
  case 'powerPeek':powerTurn();assert(s.phase==='power'&&(s.power==='ownPeek'||s.power==='otherPeek'),'There is no peek power to use.');{const target=s.players.find(p=>p.id===a.playerId);assert(target,'Choose a player.');assert(s.power==='ownPeek'?target.id===actor:target.id!==actor,'Choose the correct player for this power.');indexOf(target,a.index);const reveal={owner:target.id,index:a.index,card:target.hand[a.index]};if(s.handPower){const revealed=[...(s.reveals[actor]??[]),reveal];finishHandPower(s,now);if(!['results','finished'].includes(s.phase))s.reveals[actor]=revealed;}else{advance(s,now);s.reveals[actor]=[reveal];}}break;
  case 'blindSwap':case 'blindSwapBatch':powerTurn();assert(s.phase==='power'&&s.power==='blindSwap','There is no swap power to use.');{
   const pairs=a.type==='blindSwap'?[a]:a.pairs;
@@ -94,7 +94,25 @@ export function applyAction(g:Game,actor:string,a:Action,now:number,cards?:Card[
  case 'burn':assert(s.phase==='playing'||(s.phase==='power'&&!!s.handPower),'Free throws are not available right now.');assert(s.rules.burning!=='off','Free throws are disabled at this table.');s.rules.burnAnytime=true;{
   const wasPower=s.phase==='power';
   const indices=a.indices??(a.index===undefined?[]:[a.index]);assert(Array.isArray(indices)&&indices.length>0&&indices.length<=p.hand.length,'Select one or more hand cards.');assert(new Set(indices).size===indices.length,'Choose each hand card only once.');indices.forEach(i=>indexOf(p,i));
-  assert(a.match===undefined||a.match==='drawn'||a.match==='discard','Choose a valid free throw target.');
+  assert(a.match===undefined||a.match==='drawn'||a.match==='discard'||a.match==='pair','Choose a valid free throw target.');
+  if(a.match==='pair'){
+   assert(s.phase==='playing'&&s.players[s.turn].id===actor&&s.drawn?.fromDeck,'Draw from the deck before throwing a pair.');
+   assert(indices.length>=2,'Select at least two matching hand cards.');
+   assert(a.targetId===s.drawn.card.id,'The drawn card has changed. Try again.');
+   assert(a.handRevision===p.handRevision,'Your hand has changed. Select your cards again.');
+   const selected=indices.map(i=>p.hand[i]);
+   const matches=selected.every(card=>s.rules.burning==='rank'?card.rank===selected[0].rank:value(card,jokerRankForRound(s.round))===value(selected[0],jokerRankForRound(s.round)));
+   if(matches){
+    s.discard.push(...selected);p.hand=p.hand.filter((_,i)=>!indices.includes(i));s.reveals={};s.swapEvent={version:s.version+1,actorId:actor,pairs:[],discardChanged:true,label:'Matching pair discarded'};
+    const powerRank=selected.find(c=>c.rank===11||c.rank===12)?.rank??0;const powerCount=selected.filter(c=>c.rank===powerRank).length;
+    if(!p.hand.length){s.discard.push(s.drawn.card);s.drawn=null;}
+    if(!startHandPower(s,actor,powerRank,powerCount,'continue',now)){
+     if(!p.hand.length)score(s);
+     else s.message=`${p.name} threw ${selected.length} matching hand cards. The drawn card is still held.`;
+    }
+   }else{const penalty=take(s);if(penalty)p.hand.push(penalty);s.message=penalty?`Wrong free throw. ${p.name} takes a penalty card.`:'Wrong free throw. No penalty card is available.';}
+   break;
+  }
   const ownDraw=!!s.drawn&&s.players[s.turn].id===actor&&a.match!=='discard';
   if(a.match==='drawn')assert(ownDraw,'You can only match your own deck draw.');
   if(ownDraw)assert(s.drawn!.fromDeck,'A taken discard must be swapped; it cannot be used for a free throw.');
