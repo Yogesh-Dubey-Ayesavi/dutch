@@ -1,0 +1,3 @@
+ROOM_TTL_HOURS=24
+RECONNECT_GRACE_SECONDS=120
+# ALLOWED_ORIGIN=https://your-development-tunnel.example
