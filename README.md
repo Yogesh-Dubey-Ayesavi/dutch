@@ -54,13 +54,13 @@ packages/protocol    Versioned client/server messages and sound event types
 
 Seats receive high-entropy bearer capabilities, stored only in that tab's `sessionStorage` (not preferences or URLs). Only SHA-256 token hashes are persisted on the server. WebSockets pass the capability through a `seat.<token>` subprotocol and negotiate `dutch-v1`; HTTP seat operations use `Authorization: Bearer`. Keep tokens out of logs. All production transport uses HTTPS/WSS. Independent tab sessions allow testing many players in one browser. Reload reconnects the same seat; opening the same seat in a second tab supersedes its earlier connection.
 
-Every accepted action includes protocol version, action UUID, and expected state version. The server validates membership, turn, phase, indices, and rules; atomically persists a snapshot and deduplication receipt before broadcasting player-specific projections. Stale actions receive a current snapshot and actionable error. Receipts retain the latest 1,000 versions; older replays are rejected by version checks. The game is transport-independent and could later use a WebRTC transport adapter without changing its rules.
+Every accepted action includes protocol version, action UUID, and expected state version. The server validates membership, turn, phase, indices, and rules; atomically persists a snapshot and deduplication receipt before broadcasting player-specific projections. Stale actions receive a current snapshot and actionable error. Receipts retain the latest 1,000 versions; older replays are rejected by version checks. The room WebSocket can also relay bounded WebRTC offer, answer, and ICE candidate messages between authenticated seats. Gameplay continues over the authoritative Durable Object WebSocket.
 
 The server uses `acceptWebSocket`, attachment serialization, and `webSocketMessage`/`webSocketClose`, allowing hibernation. Heartbeat ping/pong is handled by `setWebSocketAutoResponse` without waking the object. A single Durable Object alarm schedules the next turn expiry, disconnected-seat deadline, or room TTL. There are no server intervals. Constructors load the SQLite snapshot and session metadata after eviction/restart. Client heartbeats detect silent connections; capped exponential backoff reconnects and recovers snapshots. A lost table owner never loses authoritative state because authority resides on Cloudflare.
 
 A player has a two-minute reconnection grace period. After that, a live round is explicitly interrupted **without scoring**; once the group reconnects, the owner can rematch. Lobby seats missing beyond the grace period are removed and ownership transfers if needed. Room state expires after 24 hours of inactivity and SQL storage is deleted. Room-scoped history survives reloads and Worker restarts until expiry. Cross-room account/history persistence is intentionally outside this account-free version.
 
-Security: Cloudflare API rate limiting (120 requests/minute/IP), per-WebSocket persisted message windows (40/10 seconds), 4 KB payload limits, validated names/rules, same-origin upgrade checks, capacity limits, safe React text rendering, deduplication, and private state projection. API rate limits are per Cloudflare location, not a global abuse system. Cloudflare and the operator remain trusted; the architecture does not promise cheat-proof play, prevent players sharing privately observed cards, or eliminate memory aids. The browser never gets the authoritative deck.
+Security: Cloudflare API rate limiting (120 requests/minute/IP; TURN credential requests also have a 12/minute/IP limit), per-WebSocket persisted message windows (40/10 seconds), 4 KB action payloads and bounded signaling payloads, validated names/rules, same-origin checks, capacity limits, safe React text rendering, deduplication, and private state projection. TURN credentials require an authenticated room seat and expire after six hours. API rate limits are per Cloudflare location, not a global abuse system. Cloudflare and the operator remain trusted; the architecture does not promise cheat-proof play, prevent players sharing privately observed cards, or eliminate memory aids. The browser never gets the authoritative deck or long-lived TURN key.
 
 ## Tests and checks
 
@@ -82,7 +82,7 @@ npx wrangler login
 npm run deploy
 ```
 
-`wrangler.jsonc` defines the Worker, SPA static assets, `GameRoom` namespace, initial SQLite class migration, observability, rate limiter, and environment defaults. Deploy with a Cloudflare account that supports Durable Objects. Set a custom domain in Cloudflare if desired. No secrets or external services are required. The engine and all generated audio are bundled/hosted with the app. Google Fonts are optional; local serif/sans-serif fallbacks keep the UI functional offline from that service.
+`wrangler.jsonc` defines the Worker, SPA static assets, `GameRoom` namespace, initial SQLite class migration, observability, rate limiters, TURN key ID, and environment defaults. The optional TURN key API token is stored as a Worker secret, never in source or browser storage. Set `TURN_KEY_API_TOKEN` locally in the gitignored `.dev.vars` file. For production, use `npx wrangler secret put TURN_KEY_API_TOKEN`. An authenticated room seat can request six-hour ICE credentials with `POST /api/rooms/:code/turn-credentials`; the long-lived key stays in the Worker. Set a custom domain in Cloudflare if desired. The engine and all generated audio are bundled/hosted with the app. Google Fonts are optional; local serif/sans-serif fallbacks keep the UI functional offline from that service.
 
 Configuration in Wrangler `vars` (or local `.dev.vars`):
 
@@ -91,6 +91,8 @@ Configuration in Wrangler `vars` (or local `.dev.vars`):
 | `ROOM_TTL_HOURS` | `24` | Inactive room lifetime |
 | `RECONNECT_GRACE_SECONDS` | `120` | Reserved-seat/reconnect window |
 | `ALLOWED_ORIGIN` | unset | Optional exact secondary origin; same-origin is always accepted |
+| `TURN_KEY_ID` | Set in `wrangler.jsonc` | Cloudflare Realtime TURN key identifier (not secret) |
+| `TURN_KEY_API_TOKEN` | Secret | Server-side token used to issue temporary TURN credentials |
 
 Never rename/delete an existing Durable Object class migration on a deployed game. Apply additive, versioned migrations for future storage schema changes. Schema 7 stores a versioned JSON engine snapshot in SQLite `room` and bounded action receipts in `actions`. Any future engine-state shape changes need explicit snapshot migration before rollout.
 

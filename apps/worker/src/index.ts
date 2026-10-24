@@ -2,7 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import {restoreSnapshot,SNAPSHOT_SCHEMA} from './snapshot';
 import { addPlayer, applyAction, deck, expireTurn, newGame, viewFor, type Game, type Action } from '../../../packages/engine/src/index';
 import { EMOTES, type ServerMessage, type SoundName } from '../../../packages/protocol/src/index';
-interface Env {ROOMS:DurableObjectNamespace<GameRoom>;ASSETS:Fetcher;API_LIMITER:RateLimit;ROOM_TTL_HOURS:string;RECONNECT_GRACE_SECONDS:string;ALLOWED_ORIGIN?:string}
+interface Env {ROOMS:DurableObjectNamespace<GameRoom>;ASSETS:Fetcher;API_LIMITER:RateLimit;TURN_LIMITER:RateLimit;TURN_KEY_ID:string;TURN_KEY_API_TOKEN?:string;ROOM_TTL_HOURS:string;RECONNECT_GRACE_SECONDS:string;ALLOWED_ORIGIN?:string}
 interface Session {id:string;hash:string;disconnected:number|null}
 interface Attachment {id:string;window:number;count:number}
 const json=(body:unknown,status=200,headers:HeadersInit={})=>Response.json(body,{status,headers});
@@ -23,8 +23,8 @@ export default {
     const body=await request.json() as Record<string,unknown>;profile(body);
     for(let attempt=0;attempt<4;attempt++){const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';const code=Array.from(crypto.getRandomValues(new Uint8Array(6)),v=>alphabet[v%alphabet.length]).join('');const result=await env.ROOMS.getByName(code).fetch(new Request(`${url.origin}/api/rooms/${code}/create`,{method:'POST',headers:request.headers,body:JSON.stringify(body)}));if(result.status!==409)return result;}return json({error:'Could not create a room. Please retry.'},503);
    }
-   const match=url.pathname.match(/^\/api\/rooms\/([A-HJ-NP-Z2-9]{6})(?:\/(join|socket|leave))?$/);
-   if(match)return env.ROOMS.getByName(match[1]).fetch(request);
+   const match=url.pathname.match(/^\/api\/rooms\/([A-HJ-NP-Z2-9]{6})(?:\/(join|socket|leave|turn-credentials))?$/);
+   if(match){if(match[2]==='turn-credentials'){const turnRate=await env.TURN_LIMITER.limit({key:request.headers.get('CF-Connecting-IP')??'local'});if(!turnRate.success)return json({error:'Please wait before requesting TURN credentials again.'},429);}return env.ROOMS.getByName(match[1]).fetch(request);}
    return json({error:'That room could not be found. Check your invite code.'},404);
   }catch(e){return json({error:e instanceof Error?e.message:'Unable to process request.'},400);}
  }
@@ -57,6 +57,19 @@ export class GameRoom extends DurableObject<Env>{
    }
    if(!this.game||Date.now()>this.expires)return json({error:'This table has expired.'},404);
    const session=await this.auth(request);if(!session)return json({error:'Your seat could not be restored. Join the table again.'},401);
+   if(operation==='turn-credentials'){
+    if(request.method!=='POST')return json({error:'POST required.'},405);
+    const keyId=this.env.TURN_KEY_ID;const key=this.env.TURN_KEY_API_TOKEN;
+    if(!key||!/^[a-f0-9]{32}$/i.test(keyId))return json({error:'TURN credentials are not configured.'},503,{'Cache-Control':'no-store'});
+    try{
+     const ttl=21600;
+     const upstream=await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${keyId}/credentials/generate-ice-servers`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({ttl}),signal:AbortSignal.timeout(8000)});
+     if(!upstream.ok)return json({error:'Could not issue TURN credentials.'},502,{'Cache-Control':'no-store'});
+     const credentials=await upstream.json() as {iceServers?:unknown[]};
+     if(!Array.isArray(credentials.iceServers)||credentials.iceServers.length===0)return json({error:'Cloudflare returned no TURN servers.'},502,{'Cache-Control':'no-store'});
+     return json({iceServers:credentials.iceServers,expiresAt:Date.now()+ttl*1000},200,{'Cache-Control':'no-store'});
+    }catch{return json({error:'TURN credential service is temporarily unavailable.'},502,{'Cache-Control':'no-store'});}
+   }
    if(operation==='socket'){
     if(request.headers.get('Upgrade')?.toLowerCase()!=='websocket')return json({error:'WebSocket upgrade required.'},426);
     for(const socket of this.ctx.getWebSockets()){if((socket.deserializeAttachment() as Attachment).id===session.id)socket.close(4001,'Seat opened in another tab.');}
@@ -72,11 +85,22 @@ export class GameRoom extends DurableObject<Env>{
  async webSocketMessage(socket:WebSocket,raw:string|ArrayBuffer){return this.ctx.blockConcurrencyWhile(async()=>{
   let actionId:string|undefined;
   try{
-   if(typeof raw!=='string'||raw.length>4096)throw new Error('Invalid message.');
+   if(typeof raw!=='string'||raw.length>16000)throw new Error('Invalid message.');
    const connection=socket.deserializeAttachment() as Attachment;const now=Date.now();if(now-connection.window>10000){connection.window=now;connection.count=0;}connection.count++;socket.serializeAttachment(connection);if(connection.count>40)throw new Error('Too many moves. Take a breath.');
    const msg=JSON.parse(raw);if(msg.v!==1)throw new Error('Please refresh to update the game.');if(!this.game)throw new Error('This table has closed.');
    if(msg.type==='sync'){this.send(socket,{v:1,type:'state',state:viewFor(this.game,connection.id,this.connected())});return;}
    if(msg.type==='emote'){if(!EMOTES.includes(msg.emoji))throw new Error('Unknown reaction.');for(const peer of this.ctx.getWebSockets())this.send(peer,{v:1,type:'emote',playerId:connection.id,emoji:msg.emoji});return;}
+   if(msg.type==='signal'){
+    if(typeof msg.to!=='string'||msg.to===connection.id||!this.game.players.some(p=>p.id===msg.to))throw new Error('Choose another player at this table.');
+    const signal=msg.signal;
+    if(!signal||typeof signal!=='object'||!['offer','answer','candidate'].includes(signal.type))throw new Error('Invalid connection signal.');
+    if((signal.type==='offer'||signal.type==='answer')&&(typeof signal.sdp!=='string'||signal.sdp.length>12000||!signal.sdp.startsWith('v=0')))throw new Error('Invalid connection description.');
+    if(signal.type==='candidate'&&signal.candidate!==null&&(!signal.candidate||typeof signal.candidate.candidate!=='string'||signal.candidate.candidate.length>2000||(signal.candidate.sdpMid!==undefined&&signal.candidate.sdpMid!==null&&typeof signal.candidate.sdpMid!=='string')||(signal.candidate.sdpMLineIndex!==undefined&&signal.candidate.sdpMLineIndex!==null&&!Number.isInteger(signal.candidate.sdpMLineIndex))))throw new Error('Invalid ICE candidate.');
+    const target=this.ctx.getWebSockets().find(peer=>(peer.deserializeAttachment() as Attachment).id===msg.to);
+    if(!target)throw new Error('That player is not connected right now.');
+    this.send(target,{v:1,type:'signal',from:connection.id,signal});return;
+   }
+   if(raw.length>4096)throw new Error('Action message is too large.');
    if(msg.type!=='action'||typeof msg.id!=='string'||msg.id.length>80||!msg.id.length||!msg.action||typeof msg.action.type!=='string'||!Number.isInteger(msg.expectedVersion)||msg.expectedVersion<0)throw new Error('Invalid action.');
    actionId=msg.id;
    const duplicate=this.ctx.storage.sql.exec('SELECT version FROM actions WHERE player=? AND action_id=?',connection.id,msg.id).toArray().length>0;

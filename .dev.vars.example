@@ -1,3 +1,5 @@
 ROOM_TTL_HOURS=24
 RECONNECT_GRACE_SECONDS=120
+# Put the TURN key API token in your local, gitignored .dev.vars file.
+# TURN_KEY_API_TOKEN=your-cloudflare-turn-key-token
 # ALLOWED_ORIGIN=https://your-development-tunnel.example
