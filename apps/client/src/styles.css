@@ -43,6 +43,13 @@ h1,h2,h3{letter-spacing:-.7px;font-weight:650}h1 em,h2 em{font-style:normal;colo
 .avatar-option{padding:0;overflow:hidden;border-radius:50%;opacity:.72;}
 .avatar-option.active{opacity:1;border-color:#abcaff;box-shadow:0 0 0 2px #abcaff55;}
 .avatar-option>img{border-radius:50%;}
+.local-area{min-width:0;}
+.local-hand{min-width:0;width:100%;max-width:100%;flex-wrap:nowrap;justify-content:flex-start;overflow-x:auto;overflow-y:hidden;padding:8px 12px 14px;scroll-padding-inline:12px;scrollbar-width:thin;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;}
+.hand-card{flex:0 0 auto;}
+.table-bottom{padding:12px 14px 16px;margin-top:16px;}
+.table-bottom>span{font-size:11px;}
+@media(max-width:850px){.local-area{padding-inline:8px;}.local-hand{padding-inline:12px;}.table-bottom{padding:12px 10px 16px;margin-top:12px;}}
+@media(max-width:620px){.local-area{padding-inline:4px;}.local-hand{padding-inline:12px;gap:6px;}.table-bottom{padding:13px 10px 22px;margin-top:10px;}.table-bottom>span{font-size:9px;}}
 .table-bottom{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:850px;margin:14px auto 0;padding:10px 0 0;border-top:1px solid #64748b33;}
 .table-bottom>span{font-size:11px;color:#c1cada;}
 @media(max-width:850px){
@@ -81,3 +88,21 @@ h1,h2,h3{letter-spacing:-.7px;font-weight:650}h1 em,h2 em{font-style:normal;colo
  .table-bottom{font-size:9px;}
  .table-bottom>span{font-size:9px;}
 }
+
+/* Dutch announcement and final-turn clock */
+.dutch-call-toast{position:fixed;z-index:120;top:calc(env(safe-area-inset-top,0px) + 84px);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:13px;width:min(460px,calc(100vw - 28px));padding:14px 16px;border:1px solid #a9c8ff55;border-radius:12px;background:linear-gradient(115deg,#202b40f5,#182131f5);box-shadow:0 12px 36px #0008;backdrop-filter:blur(16px);animation:dutch-toast-in .32s cubic-bezier(.2,.8,.2,1);}
+.dutch-call-toast>svg{width:24px;height:31px;color:#c2d6ff;flex:0 0 auto;}
+.dutch-call-toast>span{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px;}
+.dutch-call-toast b{font-size:14px;color:#f6f8ff;font-weight:700;}
+.dutch-call-toast small{font-size:11px;color:#c1cde1;line-height:1.45;}
+.dutch-call-toast>button{width:34px;height:34px;display:grid;place-items:center;border-radius:8px;color:#bbc8df;}
+.dutch-call-toast>button:hover{background:#ffffff12;color:#fff;}
+.turn-clock.dutch-countdown{border-color:#e8c981;background:#1c2940;box-shadow:0 0 0 3px #efcc7633,0 8px 22px #0005;color:#f3e1b7;}
+.timer-tick{position:relative;width:9px;height:9px;flex:0 0 9px;border-radius:50%;background:#f2cf77;box-shadow:0 0 10px #f2cf7799;}
+.timer-tick i{position:absolute;inset:-4px;border:1px solid #f2cf77;border-radius:50%;animation:clock-tick .8s ease-out both;}
+.turn-clock.urgent.dutch-countdown .timer-tick{background:#ff8b84;box-shadow:0 0 12px #ff8b84aa;}
+.turn-clock.urgent.dutch-countdown .timer-tick i{border-color:#ff8b84;animation-duration:.55s;}
+@keyframes clock-tick{0%{opacity:.9;transform:scale(.45)}100%{opacity:0;transform:scale(1.8)}}
+@keyframes dutch-toast-in{from{opacity:0;transform:translate(-50%,-12px) scale(.97)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+@media(max-width:620px){.dutch-call-toast{top:calc(env(safe-area-inset-top,0px) + 72px);padding:12px 13px;gap:10px;border-radius:10px;}.dutch-call-toast b{font-size:13px}.dutch-call-toast small{font-size:10px}.turn-clock.dutch-countdown{box-shadow:0 0 0 2px #efcc7633,0 6px 16px #0005;}}
+@media(prefers-reduced-motion:reduce){.dutch-call-toast{animation:none}.timer-tick i{animation:none;opacity:.35}}
