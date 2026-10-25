@@ -8,9 +8,14 @@ export const reducedMotion = () =>
 
 export const EASE = "cubic-bezier(.2,.8,.2,1)";
 
-/** Fan offset for hand slot `k` of `n`: a gentle arc like cards held in a hand. */
+/** Fan offset for hand slot `k` of `n`: a gentle arc like cards held in a hand.
+ * The spread is capped so a hand swollen with penalty cards still fits on
+ * screen — it stops arcing higher/wider past that point and the row scrolls
+ * instead (see `.hand` in table.css). */
+const MAX_FAN_SPREAD = 4.5;
 export function fan(n: number, k: number, step = 3) {
-  const d = k - (n - 1) / 2;
+  const raw = k - (n - 1) / 2;
+  const d = Math.max(-MAX_FAN_SPREAD, Math.min(MAX_FAN_SPREAD, raw));
   return { y: d * d * 2.4, r: d * step };
 }
 
@@ -127,6 +132,55 @@ export function riffle(deck: HTMLElement, host: HTMLElement, duration = 1250) {
       )
       .finished.catch(() => undefined)
       .finally(() => card.remove());
+  });
+  return Promise.all(done).then(() => undefined);
+}
+
+/**
+ * Free-thrown cards flying from `fromRect` to `toEl`: they spread apart
+ * mid-air, like a small hand of cards being flicked onto the pile, then
+ * converge and stack as they land. Purely decorative ghosts — the real
+ * discard pile updates underneath them and is what remains once they land.
+ */
+export function throwCards(
+  fromRect: DOMRect,
+  toEl: Element,
+  count: number,
+  host: HTMLElement,
+) {
+  if (reducedMotion() || count < 1) return Promise.resolve();
+  const to = toEl.getBoundingClientRect();
+  const n = Math.min(count, 5);
+  const done = Array.from({ length: n }, (_, i) => {
+    const ghost = document.createElement("div");
+    ghost.className = "throw-ghost";
+    Object.assign(ghost.style, {
+      left: `${fromRect.left + fromRect.width / 2 - 17}px`,
+      top: `${fromRect.top + fromRect.height / 2 - 24}px`,
+      zIndex: String(70 + i),
+    });
+    host.appendChild(ghost);
+    const dx = to.left + to.width / 2 - (fromRect.left + fromRect.width / 2);
+    const dy = to.top + to.height / 2 - (fromRect.top + fromRect.height / 2);
+    const side = i % 2 ? 1 : -1;
+    const spread = 16 + side * 10 * Math.ceil(i / 2);
+    return ghost
+      .animate(
+        [
+          { transform: "translate(0px, 0px) rotate(0deg) scale(0.9)", offset: 0 },
+          {
+            transform: `translate(${dx * 0.55 + spread}px, ${dy * 0.5 - 22}px) rotate(${side * 14}deg) scale(1.02)`,
+            offset: 0.55,
+          },
+          {
+            transform: `translate(${dx}px, ${dy}px) rotate(${side * 4}deg) scale(0.96)`,
+            offset: 1,
+          },
+        ],
+        { duration: 360, delay: i * 70, easing: EASE, fill: "forwards" },
+      )
+      .finished.catch(() => undefined)
+      .finally(() => ghost.remove());
   });
   return Promise.all(done).then(() => undefined);
 }
