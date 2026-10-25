@@ -71,7 +71,7 @@ html.table-lock body {
   position: relative;
   z-index: 8;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
@@ -80,6 +80,7 @@ html.table-lock body {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 .table-brand > svg {
   width: 20px;
@@ -99,6 +100,7 @@ html.table-lock body {
   justify-self: end;
   display: flex;
   gap: 6px;
+  flex-shrink: 0;
 }
 .tool {
   width: 38px;
@@ -127,11 +129,15 @@ html.table-lock body {
   font-weight: 650;
   white-space: nowrap;
   transition: background 0.3s;
+  max-width: min(100%, 320px);
+  min-width: 0;
+  justify-self: center;
 }
 .turn-pill .avatar {
   width: 24px !important;
   height: 24px !important;
   margin-left: -8px;
+  flex-shrink: 0;
 }
 .turn-pill.mine {
   background: var(--d-tulip);
@@ -139,9 +145,10 @@ html.table-lock body {
   color: var(--d-tulip-ink);
 }
 .turn-label {
-  max-width: 34vw;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 16px;
+  flex: 1 1 auto;
 }
 .final-tag {
   font-size: 10px;
@@ -151,12 +158,14 @@ html.table-lock body {
   border-radius: 999px;
   background: var(--d-porcelain);
   color: var(--d-night);
+  flex-shrink: 0;
 }
 .turn-ring {
   --p: 1;
   position: relative;
   width: 26px;
   height: 26px;
+  flex-shrink: 0;
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -282,6 +291,30 @@ html.table-lock body {
   50% {
     inset: -12px;
     opacity: 0.55;
+  }
+}
+.discard.reacting {
+  box-shadow:
+    0 0 0 2px var(--d-tulip),
+    0 0 16px 2px #ff6a2b66;
+}
+.reaction-bar {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: -7px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--d-tulip);
+  transform-origin: left center;
+  animation: reaction-drain var(--reaction-ms, 5500ms) linear forwards;
+}
+@keyframes reaction-drain {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
   }
 }
 .toss-badge {
@@ -612,6 +645,100 @@ html.table-lock body {
   transform: translateY(-5px);
 }
 
+/* Browsing the whole discard pile — public information, open to anyone */
+.browse-discard {
+  position: absolute;
+  right: -10px;
+  bottom: -10px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--d-deep) !important;
+  border: 1px solid var(--d-line) !important;
+  color: var(--d-mist) !important;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 4px 10px #0007;
+}
+.browse-discard:hover {
+  color: var(--d-porcelain) !important;
+}
+.browse-discard svg {
+  width: 12px;
+  height: 12px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.2;
+}
+.discard-tray {
+  max-width: min(calc(100% - 24px), 560px);
+}
+.discard-tray .seat-who {
+  width: 100%;
+  justify-content: space-between;
+}
+.discard-tray .seat-name small {
+  margin-left: 6px;
+  font-weight: 500;
+  color: var(--d-mist);
+}
+.discard-arc {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  max-width: 100%;
+  padding: 18px 10px 8px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+.discard-arc::-webkit-scrollbar {
+  display: none;
+}
+.discard-arc-card {
+  position: relative;
+  flex: none;
+  width: var(--hw);
+  height: var(--hh);
+  scroll-snap-align: center;
+  transform: rotate(var(--rot, 0deg));
+  animation: d-discard-fan-in 0.32s var(--d-ease, ease) backwards;
+  animation-delay: var(--delay, 0ms);
+}
+.discard-arc-card.top .pc {
+  box-shadow:
+    0 0 0 2px var(--d-tulip),
+    0 6px 16px #0007;
+}
+.discard-arc-card.top small {
+  position: absolute;
+  left: 50%;
+  bottom: -16px;
+  transform: translateX(-50%);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--d-tulip);
+}
+@keyframes d-discard-fan-in {
+  from {
+    opacity: 0;
+    transform: translateY(26px) scale(0.7) rotate(0deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(var(--rot, 0deg));
+  }
+}
+.discard-joker-hint {
+  font-size: 12px;
+  color: var(--d-mist);
+}
+
 /* ---------- dock: you, your hand, the call ---------- */
 .dock {
   position: relative;
@@ -758,6 +885,7 @@ html.table-lock body {
   display: flex;
   justify-content: center;
   padding-top: 24px;
+  padding-bottom: 12px;
   min-height: calc(var(--hh) + 30px);
   gap: max(
     calc(var(--hw) * -0.55),
@@ -766,10 +894,21 @@ html.table-lock body {
       calc((var(--avail) - var(--n) * var(--hw)) / max(1, var(--n) - 1))
     )
   );
+  /* A hand swollen with penalty cards can still outgrow the squeezed gap
+     above; scroll it instead of letting cards spill out of the arc. */
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+.hand::-webkit-scrollbar {
+  display: none;
 }
 .hc {
   position: relative;
   flex: none;
+  scroll-snap-align: center;
   width: var(--hw);
   height: var(--hh);
   padding: 0;
@@ -991,6 +1130,64 @@ html.table-lock body {
 }
 .riffle-card .pc {
   box-shadow: 0 3px 8px #0008;
+}
+.pickup-fly {
+  position: fixed;
+  z-index: 55;
+  pointer-events: none;
+  width: var(--hw);
+  height: var(--hh);
+  margin: calc(var(--hh) / -2) 0 0 calc(var(--hw) / -2);
+  perspective: 600px;
+  animation: pickup-move 0.62s var(--d-ease, ease) forwards;
+}
+@keyframes pickup-move {
+  from {
+    transform: translate(0, 0) scale(1.05);
+  }
+  to {
+    transform: translate(var(--dx), var(--dy)) scale(0.55);
+  }
+}
+.pickup-flip {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transform: rotateY(180deg);
+}
+.pickup-flip.open {
+  animation: pickup-turn 0.62s linear forwards;
+}
+@keyframes pickup-turn {
+  0% {
+    transform: rotateY(0deg);
+  }
+  60% {
+    transform: rotateY(0deg);
+  }
+  100% {
+    transform: rotateY(180deg);
+  }
+}
+.pickup-flip .pc {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+}
+.pickup-flip .pickup-back {
+  transform: rotateY(180deg);
+}
+.throw-ghost {
+  position: fixed;
+  pointer-events: none;
+  width: 34px;
+  height: 48px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--d-tulip), #c23f12);
+  border: 1.5px solid #ffffff55;
+  box-shadow: 0 5px 14px #0009;
 }
 .drag-ghost {
   position: fixed !important;

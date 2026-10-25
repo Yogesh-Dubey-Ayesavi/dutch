@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {addPlayer,applyAction,CHOOSE_SECONDS,deck,DEFAULT_RULES,expireTurn,newGame,value,viewFor,validateRules,powerOwnerId,canCallDutch,jokerRankForRound,roundLabelFor,type Game,type Action} from './index';
+import {addPlayer,applyAction,CHOOSE_SECONDS,deck,DEFAULT_RULES,expireTurn,newGame,value,viewFor,validateRules,powerOwnerId,canCallDutch,jokerRankForRound,roundLabelFor,REACTION_WINDOW_MS,type Game,type Action} from './index';
 function setup(n=2,rules={}){let s=newGame('p0',rules);for(let i=0;i<n;i++){s=addPlayer(s,`p${i}`,`Player ${i}`,i);s=applyAction(s,`p${i}`,{type:'ready',ready:true},0);}return s;}
 /** Fixture: the moderator sits in the last seat so p0 opens round 1, as the older tests assume. */
 function start(n=2,rules={}){const s=applyAction(setup(n,rules),'p0',{type:'start'},0,deck());s.moderator=s.players.at(-1)!.id;s.turn=0;return applyAction(s,s.moderator,{type:'peekCount',count:2},0);}
@@ -41,7 +41,7 @@ describe('turns and confidentiality',()=>{
  it('recycles only discards below the visible top card',()=>{let s=playing();while(s.deck.length){s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});}const top=s.discard.at(-1);s=action(s,{type:'draw',source:'deck'});expect(s.discard).toEqual([top]);conservation(s);});
 });
 describe('powers and matching',()=>{
- it('supports a private own-card peek from a discarded hand Jack',()=>{let s=playing();const ix=s.deck.findIndex(c=>c.rank===11);[s.players[0].hand[0],s.deck[ix]]=[s.deck[ix],s.players[0].hand[0]];s=drawRank(s,2);s=action(s,{type:'swap',index:0});expect(()=>action(s,{type:'powerPeek',playerId:'p1',index:0})).toThrow();s=action(s,{type:'powerPeek',playerId:'p0',index:0});expect(s.turn).toBe(1);expect(viewFor(s,'p0').reveals).toHaveLength(1);expect(viewFor(s,'p1').reveals).toHaveLength(0);});
+ it('supports a private own-card peek from a discarded hand Jack, without blocking the table',()=>{let s=playing();const ix=s.deck.findIndex(c=>c.rank===11);[s.players[0].hand[0],s.deck[ix]]=[s.deck[ix],s.players[0].hand[0]];s=drawRank(s,2);s=action(s,{type:'swap',index:0});expect(s.phase).toBe('playing');expect(s.turn).toBe(1);expect(s.peeks.p0).toBe(1);expect(()=>action(s,{type:'powerPeek',playerId:'p0',index:0},'p1')).toThrow();s=action(s,{type:'powerPeek',playerId:'p0',index:0},'p0');expect(s.turn).toBe(1);expect(viewFor(s,'p0').reveals).toHaveLength(1);expect(viewFor(s,'p1').reveals).toHaveLength(0);});
  it('lets a queen swap any two cards, including two opponents',()=>{let s=handPower(playing(3));const a=s.players[1].hand[0],b=s.players[2].hand[1];s=action(s,{type:'blindSwap',firstPlayerId:'p1',firstIndex:0,secondPlayerId:'p2',secondIndex:1});expect(s.players[1].hand[0]).toEqual(b);expect(s.players[2].hand[1]).toEqual(a);expect(viewFor(s,'p0').players.flatMap(p=>p.hand).every(c=>c===null)).toBe(true);conservation(s);});
  it('rejects swapping a card with itself',()=>{const s=handPower();expect(()=>action(s,{type:'blindSwap',firstPlayerId:'p0',firstIndex:0,secondPlayerId:'p0',secondIndex:0})).toThrow();});
  it('allows skipping or timing out a power',()=>{const s=handPower();expect(action(s,{type:'skipPower'}).turn).toBe(1);expect(expireTurn(s,50000).turn).toBe(1);});
@@ -52,19 +52,18 @@ describe('powers and matching',()=>{
 describe('Dutch, scores, rounds, and recovery',()=>{
  it('gives every opponent exactly one final turn',()=>{let s=dutch(playing(4));expect(s.finalTurns).toBe(3);for(let i=1;i<=3;i++){expect(s.players[s.turn].id).toBe(`p${i}`);s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});}expect(s.phase).toBe('results');expect(s.history).toHaveLength(1);conservation(s);});
  it('rejects Dutch after drawing or a second Dutch call',()=>{expect(()=>action(action(playing(),{type:'draw',source:'deck'}),{type:'call'})).toThrow();expect(()=>action(action(playing(),{type:'call'}),{type:'call'})).toThrow();});
- it('calculates score breakdowns and makes a failed caller draw one card per player at or below them',()=>{
+ it('calculates score breakdowns and gives a failed caller a flat points penalty',()=>{
   let s=playing(4);setHandRanks(s,'p0',[5,5,5,5]);setHandRanks(s,'p1',[1,1,2,2]);setHandRanks(s,'p2',[6,6,6,6]);setHandRanks(s,'p3',[2,2,2,2]);
   s=dutch(s);for(const id of ['p1','p2','p3']){s=action(s,{type:'draw',source:'deck'},id);s=action(s,{type:'discard'},id);}
   const result=s.history[0];expect(result.base).toEqual({p0:20,p1:6,p2:24,p3:8});
-  // p1 (6) and p3 (8) are at or below the caller's 20: two extra cards, counted in the score.
-  expect(result.penaltyCards).toEqual({p0:2});expect(result.hands.p0).toHaveLength(6);
-  expect(result.penalty.p0).toBe(result.hands.p0.slice(4).reduce((a,c)=>a+value(c,result.jokerRank),0));
+  // The caller's 20 isn't the lowest (p1's 6 and p3's 8 both beat it): a flat points penalty, no extra cards.
+  expect(result.penalty.p0).toBe(s.rules.callPenalty);expect(result.hands.p0).toHaveLength(4);
   for(const p of s.players)expect(result.scores[p.id]).toBe(result.base[p.id]+result.penalty[p.id]);
   expect(viewFor(s,'p1').players.every(p=>p.hand.every(Boolean))).toBe(true);conservation(s);
  });
- it('gives a successful caller no extra cards',()=>{
+ it('gives a successful caller no penalty',()=>{
   let s=playing();setHandRanks(s,'p0',[1,1,2,2]);setHandRanks(s,'p1',[9,9,9,9]);s=dutch(s);s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});
-  expect(s.history[0].penaltyCards).toEqual({});expect(s.history[0].penalty.p0).toBe(0);expect(s.history[0].hands.p0).toHaveLength(4);
+  expect(s.history[0].penalty.p0).toBe(0);expect(s.history[0].hands.p0).toHaveLength(4);
  });
  it('plays exactly 13 rounds with two players, rotates starters, and resets on rematch',()=>{let s=playing();expect(s.rules.rounds).toBe(13);for(let n=1;n<=13;n++){expect(s.round).toBe(n);expect(s.turn).toBe((n-1)%2);s=dutch(s);s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});expect(s.history).toHaveLength(n);conservation(s);expect(s.phase).toBe(n===13?'finished':'results');if(n<13){expect(()=>applyAction(s,'p0',{type:'rematch'},200,deck())).toThrow();s=applyAction(s,'p0',{type:'nextRound'},200,deck());s=applyAction(s,s.moderator!,{type:'peekCount',count:2},200);for(const p of s.players)s=action(s,{type:'finishPeek'},p.id);}}expect(()=>applyAction(s,'p0',{type:'nextRound'},300,deck())).toThrow();s=applyAction(s,'p0',{type:'rematch'},300,deck());expect(s.history).toEqual([]);expect(s.round).toBe(1);expect(s.rules.rounds).toBe(13);});
  it('restores exact deterministic state from JSON snapshots',()=>{const s=handPower();const restored=JSON.parse(JSON.stringify(s));expect(action(restored,{type:'skipPower'})).toEqual(action(s,{type:'skipPower'}));});
@@ -86,20 +85,18 @@ describe('Dutch, scores, rounds, and recovery',()=>{
   expect(()=>applyAction(finalized,'p0',{type:'undoCall'},finalized.deadline!)).toThrow('There is no Dutch call to undo.');
   conservation(finalized);
  });
- it('deals a failed caller their penalty cards again at the start of their next round',()=>{
+ it('does not carry any extra cards into a failed caller’s next round',()=>{
   let s=playing(4);setHandRanks(s,'p0',[5,5,5,5]);setHandRanks(s,'p1',[1,1,2,2]);setHandRanks(s,'p2',[6,6,6,6]);setHandRanks(s,'p3',[2,2,2,2]);
   s=dutch(s);for(const id of ['p1','p2','p3']){s=action(s,{type:'draw',source:'deck'},id);s=action(s,{type:'discard'},id);}
-  expect(s.carryPenalty).toEqual({playerId:'p0',count:2});
+  expect(s.history[0].penalty.p0).toBe(s.rules.callPenalty);
   s=applyAction(s,'p0',{type:'nextRound'},200,deck());
-  expect(s.carryPenalty).toBeNull();
-  expect(s.players.find(p=>p.id==='p0')!.hand).toHaveLength(6);
-  for(const p of s.players)if(p.id!=='p0')expect(p.hand).toHaveLength(4);
+  for(const p of s.players)expect(p.hand).toHaveLength(4);
   conservation(s);
  });
 });
 
 describe('Jack, Queen, and Dutch cancellation',()=>{
- it('Jack privately reveals exactly one own card and cannot blind swap',()=>{let s=jackPower();expect(s.power).toBe('ownPeek');expect(()=>action(s,{type:'powerPeek',playerId:'p1',index:0})).toThrow();expect(()=>action(s,{type:'blindSwap',firstPlayerId:'p0',firstIndex:0,secondPlayerId:'p1',secondIndex:0})).toThrow();s=action(s,{type:'powerPeek',playerId:'p0',index:2});expect(viewFor(s,'p0').reveals).toHaveLength(1);expect(viewFor(s,'p0').reveals[0].card).toEqual(s.players[0].hand[2]);expect(viewFor(s,'p1').players.flatMap(p=>p.hand).every(c=>c===null)).toBe(true);expect(s.turn).toBe(1);expect(()=>action(s,{type:'powerPeek',playerId:'p0',index:3},'p0')).toThrow();conservation(s);});
+ it('Jack privately reveals exactly one own card, never blocks play, and cannot blind swap',()=>{let s=jackPower();expect(s.phase).toBe('playing');expect(s.turn).toBe(1);expect(s.peeks.p0).toBe(1);expect(()=>action(s,{type:'powerPeek',playerId:'p0',index:0},'p1')).toThrow();expect(()=>action(s,{type:'blindSwap',firstPlayerId:'p0',firstIndex:0,secondPlayerId:'p1',secondIndex:0},'p0')).toThrow();s=action(s,{type:'powerPeek',playerId:'p0',index:2},'p0');expect(viewFor(s,'p0').reveals).toHaveLength(1);expect(viewFor(s,'p0').reveals[0].card).toEqual(s.players[0].hand[2]);expect(viewFor(s,'p1').players.flatMap(p=>p.hand).every(c=>c===null)).toBe(true);expect(s.turn).toBe(1);expect(()=>action(s,{type:'powerPeek',playerId:'p0',index:3},'p0')).toThrow();conservation(s);});
  it('Queen grants only a blind swap, never a peek',()=>{const s=handPower();expect(s.power).toBe('blindSwap');expect(()=>action(s,{type:'powerPeek',playerId:'p0',index:0})).toThrow();});
  for(const callerPosition of ['first','second','both'] as const){
   it(`cancels Dutch when the caller supplies the ${callerPosition} swapped card, even on the last final turn`,()=>{let s=dutch(playing());s=handPower(s);expect(s.finalTurns).toBe(1);const first=callerPosition==='second'?'p1':'p0';const second=callerPosition==='first'?'p1':'p0';s=action(s,{type:'blindSwap',firstPlayerId:first,firstIndex:0,secondPlayerId:second,secondIndex:1});expect(s.caller).toBeNull();expect(s.finalTurns).toBe(0);expect(s.phase).toBe('playing');expect(s.history).toHaveLength(0);expect(s.message).toContain('Dutch cancelled');expect(s.turn).toBe(0);expect(viewFor(s,'p1').players.flatMap(p=>p.hand).every(c=>c===null)).toBe(true);conservation(s);s=dutch(s);expect(s.caller).toBe('p0');expect(s.finalTurns).toBe(1);s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});expect(s.history).toHaveLength(1);expect(s.history[0].caller).toBe('p0');});
@@ -312,41 +309,43 @@ describe('multiple free throws and hand Queen powers',()=>{
 
 function jackPower(s=matchingHand(11,1)){return action(drawRank(s,2),{type:'swap',index:0});}
 
-describe('hand Jack powers',()=>{
- it('grants one private own-card peek per hand Jack, excluding the matching drawn Jack',()=>{
+describe('hand Jack powers never block the table',()=>{
+ it('grants one private own-card peek per hand Jack, excluding the matching drawn Jack, and lets play continue immediately',()=>{
   let s=action(drawRank(matchingHand(11,3),11),{type:'burn',indices:[0,1,2],match:'drawn'});
-  expect(s.handPower).toMatchObject({kind:'ownPeek',ownerId:'p0',remaining:3});expect(s.players[0].hand).toHaveLength(1);expect(s.discard.slice(-4).every(c=>c.rank===11)).toBe(true);conservation(s);
-  for(const remaining of [2,1,0]){s=action(s,{type:'powerPeek',playerId:'p0',index:0});expect(s.handPower?.remaining??0).toBe(remaining);expect(viewFor(s,'p1').players[0].hand.every(c=>c===null)).toBe(true);conservation(s);}
+  expect(s.phase).toBe('playing');expect(s.turn).toBe(1);expect(s.peeks.p0).toBe(3);expect(s.players[0].hand).toHaveLength(1);expect(s.discard.slice(-4).every(c=>c.rank===11)).toBe(true);conservation(s);
+  for(const remaining of [2,1,0]){s=action(s,{type:'powerPeek',playerId:'p0',index:0},'p0');expect(s.peeks.p0??0).toBe(remaining);expect(viewFor(s,'p1').players[0].hand.every(c=>c===null)).toBe(true);conservation(s);}
   expect(s.turn).toBe(1);expect(viewFor(s,'p0').players[0].hand[0]).toEqual(s.players[0].hand[0]);
  });
  it('never grants a power for a Jack discarded directly from the draw pile',()=>{
-  for(const usePower of [true,false]){const s=action(withDrawRank(11),{type:'discard',usePower});expect(s.handPower).toBeNull();expect(s.power).toBeNull();expect(s.turn).toBe(1);conservation(s);}
+  for(const usePower of [true,false]){const s=action(withDrawRank(11),{type:'discard',usePower});expect(s.handPower).toBeNull();expect(s.power).toBeNull();expect(s.peeks.p0).toBeUndefined();expect(s.turn).toBe(1);conservation(s);}
  });
- it('automatically earns a peek when a Jack leaves the hand during a normal replacement',()=>{
-  const s=jackPower();expect(s.power).toBe('ownPeek');expect(s.handPower?.remaining).toBe(1);const after=action(s,{type:'powerPeek',playerId:'p0',index:2});expect(after.turn).toBe(1);expect(viewFor(after,'p0').players[0].hand[2]).not.toBeNull();expect(viewFor(after,'p1').players[0].hand[2]).toBeNull();conservation(after);
+ it('automatically earns a peek when a Jack leaves the hand during a normal replacement, without blocking the table',()=>{
+  const s=jackPower();expect(s.phase).toBe('playing');expect(s.turn).toBe(1);expect(s.peeks.p0).toBe(1);
+  const after=action(s,{type:'powerPeek',playerId:'p0',index:2},'p0');expect(after.turn).toBe(1);expect(viewFor(after,'p0').players[0].hand[2]).not.toBeNull();expect(viewFor(after,'p1').players[0].hand[2]).toBeNull();conservation(after);
  });
  it('supports three distinct private peeks without losing previously revealed choices',()=>{
   let s=matchingHand(11,3);s.players[0].hand.push(s.deck.pop()!,s.deck.pop()!);s=drawRank(s,11);s=action(s,{type:'burn',indices:[0,1,2],match:'drawn'});
-  for(const index of [0,1,2]){s=action(s,{type:'powerPeek',playerId:'p0',index});expect(viewFor(s,'p0').reveals).toHaveLength(index+1);expect(viewFor(s,'p1').reveals).toHaveLength(0);}
+  for(const index of [0,1,2]){s=action(s,{type:'powerPeek',playerId:'p0',index},'p0');expect(viewFor(s,'p0').reveals).toHaveLength(index+1);expect(viewFor(s,'p1').reveals).toHaveLength(0);}
   expect(viewFor(s,'p0').players[0].hand.every(Boolean)).toBe(true);expect(viewFor(s,'p1').players[0].hand.every(c=>c===null)).toBe(true);conservation(s);
  });
- it('lets an out-of-turn thrower use earned Jack peeks while preserving the active draw',()=>{
+ it('lets an out-of-turn thrower use earned Jack peeks while preserving the active draw and without pausing play',()=>{
   let s=matchingHand(11,2);const ix=s.deck.findIndex(c=>c.rank===11);[s.discard[0],s.deck[ix]]=[s.deck[ix],s.discard[0]];s.turn=1;s=drawRank(s,5);const held=s.drawn;
-  s=action(s,{type:'burn',indices:[0,1],match:'discard'},'p0');expect(s.handPower?.ownerId).toBe('p0');expect(s.turn).toBe(1);
-  expect(()=>action(s,{type:'powerPeek',playerId:'p1',index:0},'p1')).toThrow('your power');expect(()=>action(s,{type:'powerPeek',playerId:'p1',index:0},'p0')).toThrow('correct player');
+  s=action(s,{type:'burn',indices:[0,1],match:'discard'},'p0');expect(s.peeks.p0).toBe(2);expect(s.phase).toBe('playing');expect(s.turn).toBe(1);expect(s.drawn).toEqual(held);
+  expect(()=>action(s,{type:'powerPeek',playerId:'p1',index:0},'p1')).toThrow('no pending peek');expect(()=>action(s,{type:'powerPeek',playerId:'p1',index:0},'p0')).toThrow('own card');
   s=action(s,{type:'powerPeek',playerId:'p0',index:0},'p0');s=action(s,{type:'powerPeek',playerId:'p0',index:1},'p0');
   expect(s.turn).toBe(1);expect(s.phase).toBe('playing');expect(s.drawn).toEqual(held);expect(viewFor(s,'p0').drawn?.card).toBeNull();expect(viewFor(s,'p1').reveals).toHaveLength(0);conservation(s);
  });
- it('skips one peek at a time and restores partially used powers after recovery',()=>{
-  let s=action(drawRank(matchingHand(11,3),11),{type:'burn',indices:[0,1,2],match:'drawn'});s=action(s,{type:'powerPeek',playerId:'p0',index:0});expect(s.handPower?.remaining).toBe(2);
-  s=JSON.parse(JSON.stringify(s));expect(viewFor(s,'p0').reveals).toHaveLength(1);s=action(s,{type:'skipPower'});expect(s.handPower?.remaining).toBe(1);s=action(s,{type:'skipPower'});expect(s.phase).toBe('playing');expect(s.turn).toBe(1);conservation(s);
+ it('resolves peeks one at a time and persists partial progress through snapshot recovery',()=>{
+  let s=action(drawRank(matchingHand(11,3),11),{type:'burn',indices:[0,1,2],match:'drawn'});s=action(s,{type:'powerPeek',playerId:'p0',index:0},'p0');expect(s.peeks.p0).toBe(2);
+  s=JSON.parse(JSON.stringify(s));expect(viewFor(s,'p0').reveals).toHaveLength(1);expect(s.phase).toBe('playing');expect(s.turn).toBe(1);conservation(s);
  });
- it('expires unused Jack peeks without losing cards',()=>{
-  const s=action(drawRank(matchingHand(11,3),11),{type:'burn',indices:[0,1,2],match:'drawn'});const after=expireTurn(s,s.deadline!);expect(after.handPower).toBeNull();expect(after.turn).toBe(1);expect(after.phase).toBe('playing');conservation(after);
+ it('keeps unused Jack peeks available through ordinary turn timeouts',()=>{
+  const s=action(drawRank(matchingHand(11,3),11),{type:'burn',indices:[0,1,2],match:'drawn'});expect(s.peeks.p0).toBe(3);expect(s.phase).toBe('playing');
+  const after=expireTurn(s,s.deadline!);expect(after.peeks.p0).toBe(3);expect(after.phase).toBe('playing');conservation(after);
  });
  it('grants no Jack power for wrong throws or when powers are disabled',()=>{
-  let s=matchingHand(11,2);s=drawRank(s,5);const wrong=action(s,{type:'burn',indices:[0,1],match:'drawn'});expect(wrong.handPower).toBeNull();expect(wrong.players[0].hand).toHaveLength(5);
-  const disabled=matchingHand(11,2);disabled.rules.powers=false;const after=action(drawRank(disabled,11),{type:'burn',indices:[0,1],match:'drawn'});expect(after.handPower).toBeNull();expect(after.turn).toBe(1);conservation(after);
+  let s=matchingHand(11,2);s=drawRank(s,5);const wrong=action(s,{type:'burn',indices:[0,1],match:'drawn'});expect(wrong.handPower).toBeNull();expect(wrong.peeks.p0).toBeUndefined();expect(wrong.players[0].hand).toHaveLength(5);
+  const disabled=matchingHand(11,2);disabled.rules.powers=false;const after=action(drawRank(disabled,11),{type:'burn',indices:[0,1],match:'drawn'});expect(after.handPower).toBeNull();expect(after.peeks.p0).toBeUndefined();expect(after.turn).toBe(1);conservation(after);
  });
 });
 
@@ -399,20 +398,21 @@ describe('concurrent Queen throws and atomic swap plans',()=>{
  });
 });
 
-describe('exclusive Jack power ownership',()=>{
- it('assigns an out-of-turn Jack power to its thrower, not the active turn player',()=>{
+describe('Jack peeks are private and never block the table',()=>{
+ it('keeps an out-of-turn thrower’s peek exclusive to them, usable immediately',()=>{
   let s=matchingHand(11,1,3);const ix=s.deck.findIndex(c=>c.rank===11);[s.discard[0],s.deck[ix]]=[s.deck[ix],s.discard[0]];s.turn=1;
-  s=action(s,{type:'burn',index:0,match:'discard'},'p0');expect(powerOwnerId(s)).toBe('p0');expect(powerOwnerId(viewFor(s,'p1'))).toBe('p0');
-  for(const other of ['p1','p2'])for(const target of ['p0',other])expect(()=>action(s,{type:'powerPeek',playerId:target,index:0},other)).toThrow('Only the player who earned it');
+  s=action(s,{type:'burn',index:0,match:'discard'},'p0');expect(s.peeks.p0).toBe(1);expect(s.phase).toBe('playing');expect(s.turn).toBe(1);
+  for(const other of ['p1','p2'])expect(()=>action(s,{type:'powerPeek',playerId:'p0',index:0},other)).toThrow('own card');
   const after=action(s,{type:'powerPeek',playerId:'p0',index:0},'p0');expect(viewFor(after,'p0').players[0].hand[0]).not.toBeNull();for(const other of ['p1','p2']){expect(viewFor(after,other).reveals).toEqual([]);expect(viewFor(after,other).players[0].hand.every(c=>c===null)).toBe(true);}
  });
- it('blocks other players from consuming or skipping the thrower’s peeks',()=>{
-  const s=jackPower();const before=JSON.stringify(s);expect(()=>action(s,{type:'skipPower'},'p1')).toThrow('Only the player who earned it');expect(()=>action(s,{type:'powerPeek',playerId:'p1',index:0},'p1')).toThrow('Only the player who earned it');expect(JSON.stringify(s)).toBe(before);expect(s.handPower?.remaining).toBe(1);
- });
- it('does not let a queued Jack owner peek before their own power becomes active',()=>{
+ it('lets two players hold and use independent Jack peeks at the same time, in any order',()=>{
   let s=matchingHand(11,2,3);const ix=s.deck.findIndex(c=>c.rank===11);[s.players[1].hand[0],s.deck[ix]]=[s.deck[ix],s.players[1].hand[0]];
-  s=action(drawRank(s,11),{type:'burn',indices:[0,1],match:'drawn'},'p0');s=action(s,{type:'burn',index:0,match:'discard'},'p1');expect(powerOwnerId(s)).toBe('p0');expect(()=>action(s,{type:'powerPeek',playerId:'p1',index:0},'p1')).toThrow('Only the player who earned it');
-  s=action(s,{type:'skipPower'},'p0');s=action(s,{type:'skipPower'},'p0');expect(powerOwnerId(s)).toBe('p1');expect(()=>action(s,{type:'powerPeek',playerId:'p0',index:0},'p0')).toThrow('Only the player who earned it');s=action(s,{type:'powerPeek',playerId:'p1',index:0},'p1');expect(viewFor(s,'p0').players[1].hand[0]).toBeNull();expect(viewFor(s,'p1').players[1].hand[0]).not.toBeNull();
+  s=action(drawRank(s,11),{type:'burn',indices:[0,1],match:'drawn'},'p0');s=action(s,{type:'burn',index:0,match:'discard'},'p1');
+  expect(s.peeks.p0).toBe(2);expect(s.peeks.p1).toBe(1);expect(s.phase).toBe('playing');
+  // p1 can use their peek before p0 touches theirs — independent owners never wait on each other.
+  s=action(s,{type:'powerPeek',playerId:'p1',index:0},'p1');expect(s.peeks.p1).toBeUndefined();
+  s=action(s,{type:'powerPeek',playerId:'p0',index:0},'p0');expect(s.peeks.p0).toBe(1);
+  expect(viewFor(s,'p0').players[1].hand[0]).toBeNull();expect(viewFor(s,'p1').players[1].hand[0]).not.toBeNull();
  });
 });
 
@@ -436,7 +436,9 @@ describe('keep a draw and exchange multiple matching hand cards',()=>{
   for(const indices of [[0,wrong],[0,0],[],[-1],[9]])expect(()=>action(s,{type:'swap',indices})).toThrow();expect(()=>action(s,{type:'swap',indices:[0,1],handRevision:s.players[0].handRevision-1})).toThrow('hand changed');expect(JSON.stringify(s)).toBe(before);
  });
  it('grants all powers for Queens or Jacks discarded in a batch exchange',()=>{
-  for(const rank of [11,12]){const s=drawRank(matchingHand(rank,3),5);const after=action(s,{type:'swap',indices:[0,1,2]});expect(after.players[0].hand).toHaveLength(2);expect(after.players[0].hand).toContainEqual(s.drawn!.card);expect(after.handPower).toMatchObject({ownerId:'p0',remaining:3,kind:rank===12?'blindSwap':'ownPeek',resume:'advance'});expect(after.turn).toBe(0);conservation(after);}
+  const queen=drawRank(matchingHand(12,3),5);const afterQueen=action(queen,{type:'swap',indices:[0,1,2]});expect(afterQueen.players[0].hand).toHaveLength(2);expect(afterQueen.players[0].hand).toContainEqual(queen.drawn!.card);expect(afterQueen.handPower).toMatchObject({ownerId:'p0',remaining:3,kind:'blindSwap',resume:'advance'});expect(afterQueen.turn).toBe(0);conservation(afterQueen);
+  // A hand Jack never blocks: the swap grants three peeks and the turn moves on immediately.
+  const jack=drawRank(matchingHand(11,3),5);const afterJack=action(jack,{type:'swap',indices:[0,1,2]});expect(afterJack.players[0].hand).toHaveLength(2);expect(afterJack.players[0].hand).toContainEqual(jack.drawn!.card);expect(afterJack.handPower).toBeNull();expect(afterJack.peeks.p0).toBe(3);expect(afterJack.phase).toBe('playing');expect(afterJack.turn).toBe(1);conservation(afterJack);
  });
  it('still allows a remaining match to free throw after a single exchange ends the turn',()=>{
   const s=drawRank(matchingHand(9,2),5);const next=action(s,{type:'swap',index:0});expect(next.turn).toBe(1);const after=action(next,{type:'burn',indices:[1],match:'discard'},'p0');expect(after.players[0].hand).toHaveLength(3);expect(after.turn).toBe(1);expect(after.message).toContain('free throw');conservation(after);
@@ -461,7 +463,9 @@ describe('automatic matching replacements',()=>{
   const s=matchingHand(4,1);s.deck.push(...s.players[0].hand.splice(1));const after=action(drawRank(s,4),{type:'swap',index:0});expect(after.players[0].hand).toEqual([]);expect(after.phase).toBe('results');expect(after.history[0].base.p0).toBe(0);conservation(after);
  });
  it('counts only hand Jacks or Queens for automatically earned powers',()=>{
-  for(const rank of [11,12]){let s=drawRank(matchingHand(rank,2),rank);s=action(s,{type:'swap',indices:[0,1]});expect(s.players[0].hand).toHaveLength(2);expect(s.discard.slice(-3).every(c=>c.rank===rank)).toBe(true);expect(s.handPower).toMatchObject({remaining:2,ownerId:'p0',resume:'advance',kind:rank===11?'ownPeek':'blindSwap'});s=action(s,{type:'skipPower'});s=action(s,{type:'skipPower'});expect(s.turn).toBe(1);conservation(s);}
+  let queen=drawRank(matchingHand(12,2),12);queen=action(queen,{type:'swap',indices:[0,1]});expect(queen.players[0].hand).toHaveLength(2);expect(queen.discard.slice(-3).every(c=>c.rank===12)).toBe(true);expect(queen.handPower).toMatchObject({remaining:2,ownerId:'p0',resume:'advance',kind:'blindSwap'});queen=action(queen,{type:'skipPower'});queen=action(queen,{type:'skipPower'});expect(queen.turn).toBe(1);conservation(queen);
+  // A hand Jack grants its peeks and lets the turn move on right away — nothing left to skip.
+  let jack=drawRank(matchingHand(11,2),11);jack=action(jack,{type:'swap',indices:[0,1]});expect(jack.players[0].hand).toHaveLength(2);expect(jack.discard.slice(-3).every(c=>c.rank===11)).toBe(true);expect(jack.handPower).toBeNull();expect(jack.peeks.p0).toBe(2);expect(jack.phase).toBe('playing');expect(jack.turn).toBe(1);conservation(jack);
  });
  it('still replaces normally when the drawn rank differs',()=>{
   const s=drawRank(matchingHand(6,1),5);const after=action(s,{type:'swap',index:0});expect(after.players[0].hand).toHaveLength(4);expect(after.players[0].hand[0]).toEqual(s.drawn!.card);expect(after.discard.at(-1)!.rank).toBe(6);expect(after.turn).toBe(1);conservation(after);
@@ -576,5 +580,65 @@ describe('automatic Dutch from an empty hand',()=>{
   s=action(s,{type:'discard'},'p0');expect(s.players[s.turn].id).toBe('p2');expect(canCallDutch(s,'p2')).toBe(false);expect(()=>action(s,{type:'call'},'p2')).toThrow();
   s=action(s,{type:'draw',source:'deck'},'p2');s=action(s,{type:'discard'},'p2');expect(s.players[s.turn].id).toBe('p3');expect(s.phase).toBe('playing');
   s=action(s,{type:'draw',source:'deck'},'p3');s=action(s,{type:'discard'},'p3');expect(s.phase).toBe('results');expect(s.history[0].autoDutch).toBe('p1');expect(s.history[0].base.p1).toBe(0);conservation(s);
+ });
+});
+
+describe('free-throw reaction window',()=>{
+ it('opens a window naming the discarded rank when a normal swap puts a new card on the pile',()=>{
+  let s=playing(2);s=setHandRanks(s,'p0',[9,1,2,3]);
+  s=drawRank(s,5);
+  s=action(s,{type:'swap',index:0},'p0');
+  expect(s.reactionWindow).toMatchObject({rank:9,value:9});
+  expect(s.reactionWindow!.deadline).toBeGreaterThanOrEqual(100+REACTION_WINDOW_MS);
+  expect(s.discard.at(-1)!.rank).toBe(9);conservation(s);
+ });
+ it('lets a second player match the same window after a first reaction already changed the physical top, without resetting its deadline',()=>{
+  let s=playing(3);
+  s=setHandRanks(s,'p0',[9,1,2,3]);s=setHandRanks(s,'p1',[9,4,5,6]);s=setHandRanks(s,'p2',[9,7,8,10]);
+  s=drawRank(s,5);s=action(s,{type:'swap',index:0},'p0');
+  const deadline=s.reactionWindow!.deadline;
+  s=applyAction(s,'p1',{type:'burn',index:0,match:'discard'},deadline-4000);
+  expect(s.players[1].hand).toHaveLength(3);
+  expect(s.discard.at(-1)!.rank).toBe(9);
+  // The window is unchanged by p1's reaction — same rank, same deadline.
+  expect(s.reactionWindow).toMatchObject({rank:9,deadline});
+  s=applyAction(s,'p2',{type:'burn',index:0,match:'discard'},deadline-2000);
+  expect(s.players[2].hand).toHaveLength(3);
+  expect(s.reactionWindow).toMatchObject({rank:9,deadline});
+  conservation(s);
+ });
+ it('replaces the window once a genuinely different rank is discarded, closing the door on the old one',()=>{
+  let s=playing(3);
+  s=setHandRanks(s,'p0',[9,9,1,2]);s=setHandRanks(s,'p1',[9,3,4,5]);s=setHandRanks(s,'p2',[6,7,8,10]);
+  s=drawRank(s,5);s=action(s,{type:'swap',index:0},'p0');
+  expect(s.reactionWindow).toMatchObject({rank:9});
+  expect(s.players[0].hand.map(c=>c.rank)).toContain(9); // p0 kept their second 9
+  // p1's own turn: they discard an unrelated rank (3), which should take over the window.
+  s=drawRank(s,8);s=action(s,{type:'swap',index:1},'p1');
+  expect(s.reactionWindow).toMatchObject({rank:3});
+  expect(s.discard.at(-1)!.rank).toBe(3);
+  // p0's leftover 9 (now at index 1, since their own earlier swap put the drawn 5 at index 0)
+  // no longer matches anything live — it's a wrong free throw now.
+  const before=s.players[0].hand.length;
+  s=applyAction(s,'p0',{type:'burn',index:1,match:'discard'},300);
+  expect(s.message).toContain('Wrong free throw');
+  expect(s.players[0].hand.length).toBeGreaterThanOrEqual(before); // no card removed; a penalty card may have been added
+  conservation(s);
+ });
+ it('clears an expired window on its own schedule, independent of the turn clock',()=>{
+  let s=playing(2);s=setHandRanks(s,'p0',[9,1,2,3]);
+  s=drawRank(s,5);s=action(s,{type:'swap',index:0},'p0');
+  const deadline=s.reactionWindow!.deadline;
+  expect(s.deadline).toBeGreaterThan(deadline); // the turn clock outlives the much shorter reaction window
+  const expired=expireTurn(s,deadline+1);
+  expect(expired.reactionWindow).toBeNull();
+  expect(expired.phase).toBe('playing'); // the turn itself was untouched
+  conservation(expired);
+ });
+ it('is published in the public game view',()=>{
+  let s=playing(2);s=setHandRanks(s,'p0',[9,1,2,3]);
+  s=drawRank(s,5);s=action(s,{type:'swap',index:0},'p0');
+  expect(viewFor(s,'p0').reactionWindow).toMatchObject({rank:9});
+  expect(viewFor(s,'p1').reactionWindow).toMatchObject({rank:9});
  });
 });

@@ -1,10 +1,10 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { Gavel } from "lucide-react";
-import type { GameView } from "../../../../packages/engine/src/index";
+import type { Card, GameView } from "../../../../packages/engine/src/index";
 import { Avatar } from "../Avatar";
 import { useRoom } from "../store";
-import { PlayingCard } from "./PlayingCard";
-import { EASE, reducedMotion, shake } from "./motion";
+import { PlayingCard, cardName, rankLabel } from "./PlayingCard";
+import { EASE, fan, reducedMotion, shake } from "./motion";
 
 type Player = GameView["players"][number];
 
@@ -89,6 +89,7 @@ export function Seat({
   return (
     <Tag
       ref={ref as never}
+      data-seat={p.id}
       className={`seat ${active ? "active" : ""} ${pickable ? "pickable" : ""} ${p.connected ? "" : "away"}`}
       style={{ left: x, top: y }}
       onClick={pickable ? onOpen : undefined}
@@ -173,6 +174,68 @@ export function Tray({
             </button>
           ))}
         </span>
+      </div>
+    </>
+  );
+}
+
+/** Anyone can browse the whole discard pile — it's public knowledge at the table. */
+export function DiscardTray({
+  cards,
+  jokerRank,
+  onClose,
+}: {
+  cards: Card[];
+  jokerRank: number | null;
+  onClose: () => void;
+}) {
+  const [shown] = useState(() => Date.now());
+  const ordered = [...cards].reverse(); // newest (the current top) first
+  return (
+    <>
+      <div
+        className="tray-back"
+        onClick={() => Date.now() - shown > 250 && onClose()}
+      />
+      <div
+        className="tray discard-tray"
+        role="dialog"
+        aria-label="Discard pile"
+      >
+        <span className="seat-who">
+          <span className="seat-name">
+            Discard pile <small>{cards.length} card{cards.length === 1 ? "" : "s"}</small>
+          </span>
+          <button className="tray-close" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </span>
+        <span className="tray-cards discard-arc">
+          {ordered.map((card, i) => {
+            const f = fan(ordered.length, ordered.length - 1 - i, 2);
+            return (
+              <span
+                key={card.id}
+                className={`discard-arc-card ${i === 0 ? "top" : ""}`}
+                style={
+                  {
+                    "--rot": `${f.r}deg`,
+                    "--delay": `${Math.min(i, 24) * 18}ms`,
+                  } as React.CSSProperties
+                }
+                title={cardName(card)}
+              >
+                <PlayingCard card={card} />
+                {i === 0 && <small>Top</small>}
+              </span>
+            );
+          })}
+        </span>
+        {jokerRank && (
+          <p className="discard-joker-hint">
+            {rankLabel(jokerRank)}s score 0 this round.
+          </p>
+        )}
       </div>
     </>
   );

@@ -5,12 +5,14 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { Check, EyeOff, Gavel, LogOut, Settings } from "lucide-react";
+import { Check, EyeOff, Gavel, Layers, LogOut, Settings } from "lucide-react";
 import {
   PEEK_CHOICES,
   canCallDutch,
   powerOwnerId,
   value as cardValue,
+  type Card,
+  type CardBack,
   type GameView,
   type SwapPair,
 } from "../../../../packages/engine/src/index";
@@ -27,7 +29,7 @@ import {
 import { act, emote, usePrefs, useRoom } from "../store";
 import type { ModalName } from "../ui";
 import { PlayingCard, cardName } from "./PlayingCard";
-import { Seat, Tray, seatPositions } from "./Seats";
+import { DiscardTray, Seat, Tray, seatPositions } from "./Seats";
 import { TurnPill } from "./TurnPill";
 import {
   EASE,
@@ -39,6 +41,7 @@ import {
   riffle,
   reducedMotion,
   shake,
+  throwCards,
 } from "./motion";
 import "./table.css";
 
@@ -155,6 +158,15 @@ export function GameTable({
   const [firstPick, setFirstPick] = useState<Pick | null>(null);
   const [plan, setPlan] = useState<SwapPair[]>([]);
   const [tray, setTray] = useState<string | null>(null);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [pickup, setPickup] = useState<{
+    key: string;
+    from: { x: number; y: number };
+    to: { x: number; y: number };
+    fromDeck: boolean;
+    back: CardBack;
+    card: Card | null;
+  } | null>(null);
   const [emotes, setEmotes] = useState(false);
   const [keys, setKeys] = useState(false);
   const [toast, setToast] = useState("");
@@ -180,11 +192,17 @@ export function GameTable({
     s.rules.burning !== "off" &&
     (!!s.discard.length || tossable);
   const canSelect = canFreeThrow || (holding && !disabled);
+  // The window keeps the discarded rank matchable for everyone, even after someone
+  // else's reaction already changed the physical top card.
+  const reactionLive = !!s.reactionWindow && Date.now() < s.reactionWindow.deadline;
   const picking = s.phase === "power" && powerMine;
   const pickOpponents =
     picking && (s.power === "blindSwap" || s.power === "otherPeek");
   const canCall = !disabled && canCallDutch(s, s.you);
   const myPeeks = s.reveals.filter((r) => r.owner === s.you).length;
+  // A hand Jack's peek never blocks the table: it just sits here, usable on your own
+  // cards whenever you like, independent of whose turn or power it currently is.
+  const jackPeeksPending = disabled ? 0 : (s.peeks ?? 0);
   const n = me.hand.length;
   const myPendingCall =
     s.pendingCall?.actor === s.you ? s.pendingCall : null;
@@ -228,6 +246,7 @@ export function GameTable({
     setSelected([]);
     setFirstPick(null);
   }, [s.phase, s.turn, s.round, n]);
+  useEffect(() => setDiscardOpen(false), [s.round]);
   useEffect(() => {
     setPlan([]);
     setFirstPick(null);
@@ -382,8 +401,16 @@ export function GameTable({
       if (s.power === "blindSwap" || s.power === "ownPeek") pick(s.you, i);
       return;
     }
-    if ((modifier || selected.length) && canSelect) return toggle(i);
     if (holding) return exchange([i]);
+    // A pending Jack peek wins on a fresh tap (it's earned and time-limited);
+    // once you're already selecting cards, or hold shift, that takes over.
+    if (jackPeeksPending > 0 && !modifier && !selected.length) {
+      act({ type: "powerPeek", playerId: s.you, index: i });
+      return;
+    }
+    // A single tap on your own card starts (or extends) a free-throw
+    // selection directly — no long-press needed to discover it.
+    if (canSelect) return toggle(i);
     const el = handRef.current?.querySelector(`[data-drop="hand-${i}"] .pc`);
     if (el && !reducedMotion())
       el.animate(
@@ -712,6 +739,7 @@ export function GameTable({
     const down = (e: PointerEvent) => {
       if (e.button > 0 || drag) return;
       const target = e.target as HTMLElement;
+      if (target.closest("[data-no-drag]")) return;
       const src = target.closest<HTMLElement>("[data-src]");
       if (!src || src.getAttribute("aria-disabled") === "true") {
         if (target.closest("[data-clear]")) handlers.current.clear();
@@ -805,6 +833,7 @@ export function GameTable({
         setSelected([]);
         setFirstPick(null);
         setTray(null);
+        setDiscardOpen(false);
         setKeys(false);
         setEmotes(false);
       } else if (k === "?") setKeys((v) => !v);
@@ -907,6 +936,29 @@ export function GameTable({
     );
     if (held && from) flyFrom(held, from, { duration: 380, rotate: -6 });
   }, [heldId]);
+  // Everyone else sees an opponent's pickup too: a blind back from the deck,
+  // or the public top card from the discard pile folding face-down as it
+  // flies to their seat.
+  useLayoutEffect(() => {
+    const event = s.drawEvent;
+    const root = rootRef.current;
+    if (!event || event.playerId === s.you || !motionOn || !root) return;
+    const from = root.querySelector(event.fromDeck ? ".deck" : ".discard");
+    const to = root.querySelector(`[data-seat="${event.playerId}"]`);
+    if (!from || !to) return;
+    const a = from.getBoundingClientRect();
+    const b = to.getBoundingClientRect();
+    setPickup({
+      key: `${event.version}`,
+      from: { x: a.left + a.width / 2, y: a.top + a.height / 2 },
+      to: { x: b.left + b.width / 2, y: b.top + b.height / 2 },
+      fromDeck: event.fromDeck,
+      back: event.back,
+      card: event.card,
+    });
+    const t = setTimeout(() => setPickup(null), 680);
+    return () => clearTimeout(t);
+  }, [s.drawEvent?.version]);
   const topId = s.discard.at(-1)?.id;
   const firstTop = useRef(topId);
   useLayoutEffect(() => {
@@ -925,6 +977,24 @@ export function GameTable({
         { duration: 300, easing: EASE },
       );
   }, [topId]);
+  // A free throw flies from the thrower's hand to the pile, spreading apart
+  // mid-air and stacking as it lands — visible to everyone at the table.
+  useLayoutEffect(() => {
+    const event = s.swapEvent;
+    if (!event?.thrown || !motionOn || !rootRef.current) return;
+    const toEl = rootRef.current.querySelector(".discard");
+    const fromEl =
+      event.actorId === s.you
+        ? handRef.current
+        : rootRef.current.querySelector(`[data-seat="${event.actorId}"]`);
+    if (toEl && fromEl)
+      void throwCards(
+        fromEl.getBoundingClientRect(),
+        toEl,
+        event.thrown.count,
+        rootRef.current,
+      );
+  }, [s.swapEvent?.version]);
   // My hand only grows mid-round through a penalty card.
   const myCount = useRef(n);
   useLayoutEffect(() => {
@@ -1048,6 +1118,8 @@ export function GameTable({
   else if (holding) {
     hint = tossable ? "Keep or discard" : "Swap it in";
     routine = true;
+  } else if (jackPeeksPending > 0) {
+    hint = `Tap a card to peek (${jackPeeksPending})`;
   } else if (mine) {
     hint = "Draw a card";
     routine = true;
@@ -1150,7 +1222,7 @@ export function GameTable({
             <span className="count">{s.deckCount}</span>
           </div>
           <div
-            className={`heap discard ${canDraw && s.discard.length ? "can" : ""} ${tossable ? "toss" : ""} ${s.discard.length ? "" : "empty"}`}
+            className={`heap discard ${canDraw && s.discard.length ? "can" : ""} ${tossable ? "toss" : ""} ${s.discard.length ? "" : "empty"} ${reactionLive ? "reacting" : ""}`}
             data-src="discard"
             data-drop="discard"
             role="button"
@@ -1159,7 +1231,7 @@ export function GameTable({
               tossable
                 ? "Discard your new card"
                 : s.discard.at(-1)
-                  ? `Discard pile, ${cardName(s.discard.at(-1)!)}`
+                  ? `Discard pile, ${cardName(s.discard.at(-1)!)}${reactionLive ? ` — still matchable for a free throw` : ""}`
                   : "Empty discard pile"
             }
             aria-disabled={!(canDraw || tossable || canFreeThrow)}
@@ -1174,6 +1246,32 @@ export function GameTable({
                   <path d="M12 5v14M6 13l6 6 6-6" />
                 </svg>
               </span>
+            )}
+            {reactionLive && s.reactionWindow && (
+              <span
+                key={s.reactionWindow.deadline}
+                className="reaction-bar"
+                aria-hidden="true"
+                style={
+                  {
+                    "--reaction-ms": `${Math.max(0, s.reactionWindow.deadline - Date.now())}ms`,
+                  } as CSSProperties
+                }
+              />
+            )}
+            {s.discard.length > 0 && (
+              <button
+                className="browse-discard"
+                data-no-drag
+                aria-label={`Browse the whole discard pile, ${s.discard.length} cards`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDiscardOpen(true);
+                }}
+              >
+                <Layers size={13} />
+                {s.discard.length}
+              </button>
             )}
           </div>
         </div>
@@ -1201,6 +1299,13 @@ export function GameTable({
             picked={pickedOf(trayPlayer.id)}
             onPick={(i) => pick(trayPlayer.id, i)}
             onClose={() => setTray(null)}
+          />
+        )}
+        {discardOpen && (
+          <DiscardTray
+            cards={s.discard}
+            jokerRank={s.jokerRank}
+            onClose={() => setDiscardOpen(false)}
           />
         )}
       </div>
@@ -1265,10 +1370,12 @@ export function GameTable({
               !card;
             const pickable =
               picking && (s.power === "blindSwap" || s.power === "ownPeek");
+            const jackPeekable =
+              jackPeeksPending > 0 && !holding && !selected.length && !picking;
             return (
               <button
                 key={i}
-                className={`hc ${selected.includes(i) || myPicked.includes(i) ? "sel" : ""} ${peekable || pickable ? "beckon" : ""}`}
+                className={`hc ${selected.includes(i) || myPicked.includes(i) ? "sel" : ""} ${peekable || pickable || jackPeekable ? "beckon" : ""}`}
                 data-src={handInteractive ? `hand-${i}` : undefined}
                 data-drop={`hand-${i}`}
                 data-player-slot={`${me.id}:${i}`}
@@ -1390,6 +1497,26 @@ export function GameTable({
         </div>
       )}
       {keys && <KeysOverlay close={() => setKeys(false)} />}
+      {pickup && (
+        <div
+          key={pickup.key}
+          className="pickup-fly"
+          aria-hidden="true"
+          style={
+            {
+              left: pickup.from.x,
+              top: pickup.from.y,
+              "--dx": `${pickup.to.x - pickup.from.x}px`,
+              "--dy": `${pickup.to.y - pickup.from.y}px`,
+            } as CSSProperties
+          }
+        >
+          <span className={`pickup-flip ${pickup.fromDeck ? "" : "open"}`}>
+            <PlayingCard card={pickup.card} back={pickup.back} className="pickup-face" />
+            <PlayingCard back={pickup.back} className="pickup-back" />
+          </span>
+        </div>
+      )}
       <SwapAnimation event={s.swapEvent} enabled={effects} />
     </section>
   );
