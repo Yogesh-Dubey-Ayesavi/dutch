@@ -181,12 +181,37 @@ function cue(name: string, clipVolume: number) {
   }
   sound.play();
 }
-/** A string of penalty cards landing one after another — an overspeed clacker. */
-export const playOverspeed = () => cue("overspeed", 0.8);
 /** A pleasant cockpit chime for a Dutch call that paid off. */
 export const playChime = () => cue("chime", 0.85);
 /** The classic "pull up" warning for a Dutch call that went down in flames. */
 export const playPullUp = () => cue("pull-up", 0.9);
+
+let overspeedId: number | null = null;
+/**
+ * The overspeed clacker: runs only as long as a failed caller's penalty
+ * cards are landing one by one, then cuts out — never the full clip.
+ */
+export function startOverspeed() {
+  if (!enabled || volume === 0 || !flightSounds) return;
+  let sound = sounds.get("overspeed");
+  if (!sound) {
+    sound = new Howl({ src: ["/audio/overspeed.mp3"], volume: 0.8 });
+    sounds.set("overspeed", sound);
+  }
+  sound.stop();
+  overspeedId = sound.play();
+}
+export function stopOverspeed() {
+  const sound = sounds.get("overspeed");
+  if (!sound || overspeedId === null) return;
+  const id = overspeedId;
+  overspeedId = null;
+  sound.fade(0.8, 0, 220, id);
+  setTimeout(() => {
+    sound.stop(id);
+    sound.volume(0.8, id);
+  }, 230);
+}
 
 /** A soft two-note chime announcing it's your turn, like a message notification. */
 export function turnSound() {

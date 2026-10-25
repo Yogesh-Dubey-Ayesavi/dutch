@@ -34,8 +34,9 @@ import {
   configureFlightSounds,
   configureSound,
   playChime,
-  playOverspeed,
   playPullUp,
+  startOverspeed,
+  stopOverspeed,
   playSound,
   startDutchAlarm,
   stopDutchAlarm,
@@ -771,7 +772,13 @@ function SettingsContent() {
         <div>
           {(
             [
-              ["overspeed", playOverspeed],
+              [
+                "overspeed",
+                () => {
+                  startOverspeed();
+                  setTimeout(stopOverspeed, 1200);
+                },
+              ],
               ["chime", playChime],
               ["pull up", playPullUp],
             ] as const
