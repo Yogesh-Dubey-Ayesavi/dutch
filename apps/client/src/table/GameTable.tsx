@@ -1030,15 +1030,16 @@ export function GameTable({
     hint = me.peekDone
       ? "Waiting for others"
       : `Peek ${["no", "one", "two"][peekCount] ?? peekCount} card${peekCount === 1 ? "" : "s"}`;
-  else if (picking)
+  else if (picking) {
+    const swapTotal = s.handPower?.remaining ?? 1;
+    const swapNote = swapTotal > 1 ? ` (swap ${plan.length + 1} of ${swapTotal})` : "";
     hint =
       s.power === "blindSwap"
-        ? firstPick
-          ? "Pick second card"
-          : "Pick two cards"
+        ? (firstPick ? "Pick second card" : "Pick two cards") + swapNote
         : s.power === "ownPeek"
           ? "Peek one card"
           : "Peek their card";
+  }
   else if (s.phase === "power") {
     hint = `${activeName}’s power`;
     quiet = true;
