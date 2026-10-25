@@ -317,25 +317,6 @@
   height: 43px;
   border-radius: 3px;
 }
-.result-card.extra .pc {
-  box-shadow: 0 0 0 2px var(--d-rose);
-}
-.result-card.extra {
-  animation: d-penalty-land 0.3s var(--d-ease, ease) backwards;
-}
-@keyframes d-penalty-land {
-  from {
-    opacity: 0;
-    transform: translateY(-12px) scale(0.85);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-.result-card.extra small {
-  color: var(--d-rose);
-}
 .result-card small {
   font-size: 10px;
   color: var(--d-mist);

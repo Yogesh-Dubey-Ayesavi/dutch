@@ -12,9 +12,6 @@ import { PlayingCard, rankLabel } from "./table/PlayingCard";
 import "./table/table.css";
 import "./screens.css";
 
-/** How long one penalty card takes to land, visually. */
-const PENALTY_STAGGER_MS = 420;
-
 export function Results({ state: s }: { state: GameView }) {
   const room = useRoom();
   const effects = usePrefs((p) => p.effects);
@@ -29,7 +26,7 @@ export function Results({ state: s }: { state: GameView }) {
     if (!result.caller) return;
     // The overspeed clacker plays live, during the free throws themselves
     // (see store.ts); the results screen only marks how the call landed.
-    const penalty = result.penaltyCards?.[result.caller] ?? 0;
+    const penalty = result.penalty[result.caller] ?? 0;
     if (penalty > 0) playPullUp();
     else playChime();
   }, [s.phase, s.history.length]);
@@ -111,40 +108,22 @@ export function Results({ state: s }: { state: GameView }) {
               )}
             </span>
             <span className="cards-row">
-              {result.hands[p.id]?.map((c, i, hand) => {
-                const penaltyCount = result.penaltyCards?.[p.id] ?? 0;
-                const penaltyIndex = i - (hand.length - penaltyCount);
-                const extra = penaltyIndex >= 0;
-                return (
-                  <span
-                    className={`result-card ${extra ? "extra" : ""}`}
-                    key={c.id}
-                    title={extra ? "Penalty card" : undefined}
-                    style={
-                      extra
-                        ? { animationDelay: `${penaltyIndex * PENALTY_STAGGER_MS}ms` }
-                        : undefined
-                    }
-                  >
-                    <PlayingCard card={c} />
-                    <small>
-                      {c.rank === result.jokerRank
-                        ? 0
-                        : value(c, result.jokerRank)}
-                    </small>
-                  </span>
-                );
-              })}
+              {result.hands[p.id]?.map((c) => (
+                <span className="result-card" key={c.id}>
+                  <PlayingCard card={c} />
+                  <small>
+                    {c.rank === result.jokerRank
+                      ? 0
+                      : value(c, result.jokerRank)}
+                  </small>
+                </span>
+              ))}
             </span>
             <span className="points">
               <b>{result.scores[p.id]}</b>
               {finished && <small>Match {total(p.id)}</small>}
-              {(result.penaltyCards?.[p.id] ?? 0) > 0 && (
-                <small>
-                  +{result.penaltyCards![p.id]} card
-                  {result.penaltyCards![p.id] === 1 ? "" : "s"}
-                  {!finished && " · carries into next round"}
-                </small>
+              {(result.penalty[p.id] ?? 0) > 0 && (
+                <small>+{result.penalty[p.id]} call penalty</small>
               )}
             </span>
           </li>

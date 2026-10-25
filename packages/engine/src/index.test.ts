@@ -52,19 +52,18 @@ describe('powers and matching',()=>{
 describe('Dutch, scores, rounds, and recovery',()=>{
  it('gives every opponent exactly one final turn',()=>{let s=dutch(playing(4));expect(s.finalTurns).toBe(3);for(let i=1;i<=3;i++){expect(s.players[s.turn].id).toBe(`p${i}`);s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});}expect(s.phase).toBe('results');expect(s.history).toHaveLength(1);conservation(s);});
  it('rejects Dutch after drawing or a second Dutch call',()=>{expect(()=>action(action(playing(),{type:'draw',source:'deck'}),{type:'call'})).toThrow();expect(()=>action(action(playing(),{type:'call'}),{type:'call'})).toThrow();});
- it('calculates score breakdowns and makes a failed caller draw one card per player at or below them',()=>{
+ it('calculates score breakdowns and gives a failed caller a flat points penalty',()=>{
   let s=playing(4);setHandRanks(s,'p0',[5,5,5,5]);setHandRanks(s,'p1',[1,1,2,2]);setHandRanks(s,'p2',[6,6,6,6]);setHandRanks(s,'p3',[2,2,2,2]);
   s=dutch(s);for(const id of ['p1','p2','p3']){s=action(s,{type:'draw',source:'deck'},id);s=action(s,{type:'discard'},id);}
   const result=s.history[0];expect(result.base).toEqual({p0:20,p1:6,p2:24,p3:8});
-  // p1 (6) and p3 (8) are at or below the caller's 20: two extra cards, counted in the score.
-  expect(result.penaltyCards).toEqual({p0:2});expect(result.hands.p0).toHaveLength(6);
-  expect(result.penalty.p0).toBe(result.hands.p0.slice(4).reduce((a,c)=>a+value(c,result.jokerRank),0));
+  // The caller's 20 isn't the lowest (p1's 6 and p3's 8 both beat it): a flat points penalty, no extra cards.
+  expect(result.penalty.p0).toBe(s.rules.callPenalty);expect(result.hands.p0).toHaveLength(4);
   for(const p of s.players)expect(result.scores[p.id]).toBe(result.base[p.id]+result.penalty[p.id]);
   expect(viewFor(s,'p1').players.every(p=>p.hand.every(Boolean))).toBe(true);conservation(s);
  });
- it('gives a successful caller no extra cards',()=>{
+ it('gives a successful caller no penalty',()=>{
   let s=playing();setHandRanks(s,'p0',[1,1,2,2]);setHandRanks(s,'p1',[9,9,9,9]);s=dutch(s);s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});
-  expect(s.history[0].penaltyCards).toEqual({});expect(s.history[0].penalty.p0).toBe(0);expect(s.history[0].hands.p0).toHaveLength(4);
+  expect(s.history[0].penalty.p0).toBe(0);expect(s.history[0].hands.p0).toHaveLength(4);
  });
  it('plays exactly 13 rounds with two players, rotates starters, and resets on rematch',()=>{let s=playing();expect(s.rules.rounds).toBe(13);for(let n=1;n<=13;n++){expect(s.round).toBe(n);expect(s.turn).toBe((n-1)%2);s=dutch(s);s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});expect(s.history).toHaveLength(n);conservation(s);expect(s.phase).toBe(n===13?'finished':'results');if(n<13){expect(()=>applyAction(s,'p0',{type:'rematch'},200,deck())).toThrow();s=applyAction(s,'p0',{type:'nextRound'},200,deck());s=applyAction(s,s.moderator!,{type:'peekCount',count:2},200);for(const p of s.players)s=action(s,{type:'finishPeek'},p.id);}}expect(()=>applyAction(s,'p0',{type:'nextRound'},300,deck())).toThrow();s=applyAction(s,'p0',{type:'rematch'},300,deck());expect(s.history).toEqual([]);expect(s.round).toBe(1);expect(s.rules.rounds).toBe(13);});
  it('restores exact deterministic state from JSON snapshots',()=>{const s=handPower();const restored=JSON.parse(JSON.stringify(s));expect(action(restored,{type:'skipPower'})).toEqual(action(s,{type:'skipPower'}));});
@@ -86,14 +85,12 @@ describe('Dutch, scores, rounds, and recovery',()=>{
   expect(()=>applyAction(finalized,'p0',{type:'undoCall'},finalized.deadline!)).toThrow('There is no Dutch call to undo.');
   conservation(finalized);
  });
- it('deals a failed caller their penalty cards again at the start of their next round',()=>{
+ it('does not carry any extra cards into a failed caller’s next round',()=>{
   let s=playing(4);setHandRanks(s,'p0',[5,5,5,5]);setHandRanks(s,'p1',[1,1,2,2]);setHandRanks(s,'p2',[6,6,6,6]);setHandRanks(s,'p3',[2,2,2,2]);
   s=dutch(s);for(const id of ['p1','p2','p3']){s=action(s,{type:'draw',source:'deck'},id);s=action(s,{type:'discard'},id);}
-  expect(s.carryPenalty).toEqual({playerId:'p0',count:2});
+  expect(s.history[0].penalty.p0).toBe(s.rules.callPenalty);
   s=applyAction(s,'p0',{type:'nextRound'},200,deck());
-  expect(s.carryPenalty).toBeNull();
-  expect(s.players.find(p=>p.id==='p0')!.hand).toHaveLength(6);
-  for(const p of s.players)if(p.id!=='p0')expect(p.hand).toHaveLength(4);
+  for(const p of s.players)expect(p.hand).toHaveLength(4);
   conservation(s);
  });
 });
