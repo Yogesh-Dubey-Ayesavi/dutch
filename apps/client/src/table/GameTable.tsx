@@ -10,6 +10,7 @@ import {
   PEEK_CHOICES,
   canCallDutch,
   powerOwnerId,
+  value as cardValue,
   type GameView,
   type SwapPair,
 } from "../../../../packages/engine/src/index";
@@ -17,7 +18,12 @@ import { EMOTES } from "../../../../packages/protocol/src/index";
 import { Avatar } from "../Avatar";
 import { Diamond } from "../Cards";
 import { SwapAnimation } from "../SwapAnimation";
-import { playSound, startDutchAlarm, stopDutchAlarm } from "../sound";
+import {
+  playSound,
+  startDutchAlarm,
+  stopDutchAlarm,
+  turnSound,
+} from "../sound";
 import { act, emote, usePrefs, useRoom } from "../store";
 import type { ModalName } from "../ui";
 import { PlayingCard, cardName } from "./PlayingCard";
@@ -138,7 +144,8 @@ export function GameTable({
       : s.phase === "choosing"
         ? (s.moderator ?? null)
         : s.players[s.turn]?.id;
-  const disabled = !!room.pending || room.status !== "connected";
+  const disabled =
+    !!room.pending || room.status !== "connected" || !!s.pendingCall;
   const inRound = ["choosing", "peeking", "playing", "power"].includes(s.phase);
   const peekCount = s.peekCount ?? 2;
   const moderator = s.players.find((p) => p.id === s.moderator);
@@ -179,6 +186,19 @@ export function GameTable({
   const canCall = !disabled && canCallDutch(s, s.you);
   const myPeeks = s.reveals.filter((r) => r.owner === s.you).length;
   const n = me.hand.length;
+  const myPendingCall =
+    s.pendingCall?.actor === s.you ? s.pendingCall : null;
+  const [undoSecs, setUndoSecs] = useState(0);
+  useEffect(() => {
+    if (!myPendingCall) return;
+    const tick = () =>
+      setUndoSecs(
+        Math.max(0, Math.ceil((myPendingCall.deadline - Date.now()) / 1000)),
+      );
+    tick();
+    const i = setInterval(tick, 200);
+    return () => clearInterval(i);
+  }, [myPendingCall?.deadline]);
 
   const flash = (text: string) => setToast(text);
   useEffect(() => {
@@ -248,13 +268,27 @@ export function GameTable({
       }
       setTurnsPlayed(next);
     }
+    // A short chime when it becomes your turn, like a message notification.
+    if (!wasMine.current && mine && s.phase === "playing") turnSound();
     wasMine.current = mine;
   }, [mine, s.phase]);
 
   // ----- actions -----
   const throwToPile = (indices: number[]) => {
     if (!indices.length) return;
-    const pair = tossable && indices.length >= 2;
+    // Two or more same-rank cards from your own hand are always a valid free
+    // throw on your own turn, whether or not they match the discard pile.
+    const cards = indices.map((i) => me.hand[i]);
+    const selfMatch =
+      indices.length >= 2 &&
+      cards.every(
+        (c) =>
+          c &&
+          (s.rules.burning === "rank"
+            ? c.rank === cards[0]?.rank
+            : cardValue(c, s.jokerRank) === cardValue(cards[0]!, s.jokerRank)),
+      );
+    const pair = mine && s.phase === "playing" && selfMatch;
     act({
       type: "burn",
       indices,
@@ -437,13 +471,16 @@ export function GameTable({
     if (me.handRevision !== revision) {
       pendingMove.current = null;
       els.forEach((el, i) => {
-        el.style.transition = "none";
+        // .hc's transition is `!important`, so a plain inline override can't
+        // beat it — without `important` here the "instant" snap would still
+        // animate over 0.26s, showing as a confusing second reorder.
+        el.style.setProperty("transition", "none", "important");
         el.style.transform = fanTransform(els.length, i);
         el.style.zIndex = String(i);
         el.classList.remove("lifting");
       });
       void handRef.current?.offsetWidth;
-      els.forEach((el) => (el.style.transition = ""));
+      els.forEach((el) => el.style.removeProperty("transition"));
     } else if (!room.pending) {
       pendingMove.current = null;
       els.forEach((el, i) => {
@@ -978,7 +1015,13 @@ export function GameTable({
   let hint = "";
   let quiet = false;
   let routine = false;
-  if (s.phase === "choosing") {
+  if (s.pendingCall) {
+    const caller = s.players.find((pl) => pl.id === s.pendingCall!.actor);
+    hint = myPendingCall
+      ? "Tap undo or wait"
+      : `${caller?.name ?? "A player"} called Dutch`;
+    quiet = true;
+  } else if (s.phase === "choosing") {
     hint = choosing
       ? "Cards to see?"
       : `${moderator?.name ?? "Moderator"} is choosing`;
@@ -1313,6 +1356,14 @@ export function GameTable({
             onClick={() => act({ type: "finishPeek" })}
           >
             {me.peekDone ? <Check size={20} /> : <span>Done</span>}
+          </button>
+        ) : myPendingCall ? (
+          <button
+            className="primary dutch undo"
+            onClick={() => act({ type: "undoCall" })}
+            aria-label="Undo Dutch call"
+          >
+            <span>Undo · {undoSecs}s</span>
           </button>
         ) : (
           <button

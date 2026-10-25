@@ -165,6 +165,23 @@ export function swooshSound(duration = 0.6) {
   air.start(t);
 }
 
+/** A soft two-note chime announcing it's your turn, like a message notification. */
+export function turnSound() {
+  const a = audio();
+  if (!a) return;
+  const { ctx, out, t } = a;
+  [880, 1318.5].forEach((freq, i) => {
+    const at = t + i * 0.11;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    const gain = envelope(ctx, at, 0.22, 0.008, 0.22);
+    osc.connect(gain).connect(out);
+    osc.start(at);
+    osc.stop(at + 0.3);
+  });
+}
+
 /* ---------- the Dutch alarm: loops quietly through the last lap ---------- */
 
 export function startDutchAlarm(level: number) {

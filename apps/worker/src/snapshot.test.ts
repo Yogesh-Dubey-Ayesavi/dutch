@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {addPlayer,applyAction,deck,newGame,viewFor} from '../../../packages/engine/src/index';
+import {addPlayer,applyAction,deck,expireTurn,newGame,viewFor} from '../../../packages/engine/src/index';
 import {restoreSnapshot,SNAPSHOT_SCHEMA} from './snapshot';
 function dealt(){let game=newGame('a');for(const id of ['a','b']){game=addPlayer(game,id,id,0);game=applyAction(game,id,{type:'ready',ready:true},0);}game=applyAction(game,'a',{type:'start'},1,deck());game.moderator='b';game.turn=0;return applyAction(game,'b',{type:'peekCount',count:2},1);}
 describe('room snapshot migrations',()=>{
@@ -20,7 +20,7 @@ describe('room snapshot migrations',()=>{
     const legacy=JSON.parse(JSON.stringify({schema:1,game:old}),(_key,v)=>{if(v&&typeof v==='object'&&'rank' in v&&'suit' in v){delete v.back;v.id=v.id.replace(/^black-/, '');}return v;});
     let game=restoreSnapshot(legacy);expect(game.deck.length+game.discard.length+game.players.flatMap(p=>p.hand).length).toBe(52);
     for(const p of game.players)game=applyAction(game,p.id,{type:'finishPeek'},10);
-    game=applyAction(game,'a',{type:'call'},20);game=applyAction(game,'b',{type:'draw',source:'deck'},30);game=applyAction(game,'b',{type:'discard'},40);
+    game=applyAction(game,'a',{type:'call'},20);game=expireTurn(game,game.pendingCall!.deadline);game=applyAction(game,'b',{type:'draw',source:'deck'},30);game=applyAction(game,'b',{type:'discard'},40);
     expect(game.phase).toBe('results');game=applyAction(game,'a',{type:'nextRound'},50,deck());
     expect(game.deck.length+game.discard.length+game.players.flatMap(p=>p.hand).length).toBe(104);
     expect(game.deck.filter(c=>c.back==='red')).toHaveLength(52);

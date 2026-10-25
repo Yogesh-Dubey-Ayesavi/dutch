@@ -735,6 +735,22 @@ html.table-lock body {
       0 0 34px 6px #ff6a2bbb;
   }
 }
+.primary.undo {
+  background: var(--d-rose) !important;
+  color: #fff !important;
+  box-shadow:
+    0 4px 0 #7a1328,
+    0 10px 24px #e23c5f55;
+  font-size: 17px !important;
+  animation: d-undo 1s ease-in-out infinite;
+}
+@keyframes d-undo {
+  50% {
+    box-shadow:
+      0 4px 0 #7a1328,
+      0 0 30px 6px #e23c5fbb;
+  }
+}
 
 .hand {
   grid-area: hand;

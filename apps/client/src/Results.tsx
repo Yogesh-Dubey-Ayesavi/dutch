@@ -119,6 +119,7 @@ export function Results({ state: s }: { state: GameView }) {
                 <small>
                   +{result.penaltyCards![p.id]} card
                   {result.penaltyCards![p.id] === 1 ? "" : "s"}
+                  {!finished && " · carries into next round"}
                 </small>
               )}
             </span>
