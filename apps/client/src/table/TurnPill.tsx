@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   CHOOSE_SECONDS,
+  FINAL_REACTION_MS,
   type GameView,
 } from "../../../../packages/engine/src/index";
 import { Avatar } from "../Avatar";
@@ -27,13 +28,15 @@ export function TurnPill({
       ? CHOOSE_SECONDS
       : s.phase === "peeking"
         ? s.rules.peekSeconds
-        : s.rules.turnSeconds) || 30;
+        : s.phase === "reaction"
+          ? FINAL_REACTION_MS / 1000
+          : s.rules.turnSeconds) || 30;
   const seconds = s.deadline
     ? Math.max(0, Math.ceil((s.deadline - now) / 1000))
     : 0;
   // A ticking clock only once Dutch is called: the last lap should feel tense.
   useEffect(() => {
-    if (!s.caller || !["playing", "power"].includes(s.phase) || !seconds) {
+    if (!s.caller || !["playing", "power", "reaction"].includes(s.phase) || !seconds) {
       lastTick.current = null;
       return;
     }
@@ -51,7 +54,9 @@ export function TurnPill({
         : `${moderator?.name ?? "Moderator"} chooses`
       : s.phase === "peeking"
         ? "Memorize"
-        : s.phase === "power"
+        : s.phase === "reaction"
+          ? "Free throws"
+          : s.phase === "power"
           ? powerMine
             ? "Your power"
             : `${active?.name ?? "Player"}’s power`

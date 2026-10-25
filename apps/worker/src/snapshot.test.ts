@@ -20,7 +20,7 @@ describe('room snapshot migrations',()=>{
     const legacy=JSON.parse(JSON.stringify({schema:1,game:old}),(_key,v)=>{if(v&&typeof v==='object'&&'rank' in v&&'suit' in v){delete v.back;v.id=v.id.replace(/^black-/, '');}return v;});
     let game=restoreSnapshot(legacy);expect(game.deck.length+game.discard.length+game.players.flatMap(p=>p.hand).length).toBe(52);
     for(const p of game.players)game=applyAction(game,p.id,{type:'finishPeek'},10);
-    game=applyAction(game,'a',{type:'call'},20);game=expireTurn(game,game.pendingCall!.deadline);game=applyAction(game,'b',{type:'draw',source:'deck'},30);game=applyAction(game,'b',{type:'discard'},40);
+    game=applyAction(game,'a',{type:'call'},20);game=expireTurn(game,game.pendingCall!.deadline);game=applyAction(game,'b',{type:'draw',source:'deck'},30);game=applyAction(game,'b',{type:'discard'},40);game=expireTurn(game,game.deadline!);
     expect(game.phase).toBe('results');game=applyAction(game,'a',{type:'nextRound'},50,deck());
     expect(game.deck.length+game.discard.length+game.players.flatMap(p=>p.hand).length).toBe(104);
     expect(game.deck.filter(c=>c.back==='red')).toHaveLength(52);

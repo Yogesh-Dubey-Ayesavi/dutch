@@ -10,20 +10,21 @@ export const CHOOSE_SECONDS = 15;
 export const DUTCH_UNDO_MS = 3000;
 /** How long a newly-discarded card stays matchable by anyone, even after someone else already reacted to it. */
 export const REACTION_WINDOW_MS = 5500;
+export const FINAL_REACTION_MS = 5000;
 export const DEFAULT_RULES: Rules = {rounds:MATCH_ROUNDS,turnSeconds:30,peekSeconds:25,powers:true,burning:'rank',burnAnytime:true,callPenalty:10,callerMustBeLowest:true,maxTurns:200};
 export interface Player { id:string; name:string; avatar:number; hand:Card[]; handRevision:number; ready:boolean; peeked:number[]; peekDone:boolean }
 export interface RoundScore { round:number; jokerRank:number|null; caller:string|null; autoDutch?:string|null; scores:Record<string,number>; base:Record<string,number>; penalty:Record<string,number>; hands:Record<string,Card[]>; winners:string[] }
-export interface HandPower {kind:'blindSwap'|'ownPeek';ownerId:string;remaining:number;resume:'advance'|'continue';remainingTurnMs:number}
+export interface HandPower {kind:'blindSwap'|'ownPeek';ownerId:string;remaining:number;resume:'advance'|'continue'|'reaction';remainingTurnMs:number}
 export interface SwapPair {firstPlayerId:string;firstIndex:number;secondPlayerId:string;secondIndex:number}
 export interface SwapEvent {version:number;actorId:string;pairs:(SwapPair & {firstBack:CardBack;secondBack:CardBack})[];highlightSlots?:{playerId:string;index:number;back:CardBack}[];discardChanged?:boolean;move?:{playerId:string;from:number;to:number};label?:string;
  /** How many cards `actorId` just threw onto the discard pile, for the flight animation. */ thrown?:{count:number}}
-export interface Game { phase:'lobby'|'choosing'|'peeking'|'playing'|'power'|'results'|'finished'|'interrupted'; players:Player[]; hostId:string; rules:Rules; round:number; deck:Card[]; discard:Card[]; turn:number; turns:number; drawn:{card:Card;fromDeck:boolean}|null; handPower:HandPower|null;handPowerQueue:HandPower[];swapEvent:SwapEvent|null; power:'ownPeek'|'otherPeek'|'blindSwap'|null; reveals:Record<string,{owner:string;index:number;card:Card}[]>; caller:string|null; dutchWindowFor:string|null; finalTurns:number;
+export interface Game { phase:'lobby'|'choosing'|'peeking'|'playing'|'power'|'reaction'|'results'|'finished'|'interrupted'; players:Player[]; hostId:string; rules:Rules; round:number; deck:Card[]; discard:Card[]; turn:number; turns:number; drawn:{card:Card;fromDeck:boolean}|null; handPower:HandPower|null;handPowerQueue:HandPower[];swapEvent:SwapEvent|null; power:'ownPeek'|'otherPeek'|'blindSwap'|null; reveals:Record<string,{owner:string;index:number;card:Card}[]>; caller:string|null; dutchWindowFor:string|null; finalTurns:number;
  /** Picks how many cards everyone may see; moves one seat clockwise each round. */ moderator?:string|null; peekCount?:number;
  /** First player to empty their hand off-turn; the round ends when the moderator's turn ends. */ autoDutch?:string|null;
  /** A just-made Dutch call, held briefly so the caller can undo a mis-tap before it locks in. */ pendingCall?:{actor:string;onOwnTurn:boolean;deadline:number}|null;
  /** Pending hand-Jack peeks a player has earned but not yet used. Unlike a Queen's blind swap, these never block play — the owner can use one any time. */ peeks:Record<string,number>;
  /** Card ids a hand Jack lets its owner see, until that card leaves their hand. Independent of `reveals` so an unrelated player's action never clears it early. */ jackReveals:Record<string,string[]>;
- /** The last draw, for the pickup animation — public, since a deck draw never carries a card and a discard draw only ever reveals what was already the public top card. */ drawEvent:{version:number;playerId:string;fromDeck:boolean;back:CardBack;card:Card|null}|null;
+ /** The last draw for the pickup animation: deck draws stay private; taken discards are public. */ drawEvent:{version:number;playerId:string;fromDeck:boolean;back:CardBack;card:Card|null}|null;
  /** What's still matchable for a free throw, and until when — opened by the card that triggered it, kept open through everyone else's reactions to the same rank. */ reactionWindow:{rank:number;value:number;deadline:number}|null;
  deadline:number|null; version:number; history:RoundScore[]; message:string }
 export type Action = {type:'ready';ready:boolean}|{type:'rules';rules:Partial<Rules>}|{type:'start'}|{type:'peekCount';count:number}|{type:'initialPeek';index:number}|{type:'finishPeek'}|{type:'draw';source:'deck'|'discard'}|{type:'swap';index?:number;indices?:number[];handRevision?:number}|{type:'reorder';from:number;to:number;handRevision:number}|{type:'discard';usePower?:boolean}|{type:'powerPeek';playerId:string;index:number}|{type:'blindSwap';firstPlayerId:string;firstIndex:number;secondPlayerId:string;secondIndex:number}|{type:'blindSwapBatch';pairs:SwapPair[];revisions?:Record<string,number>}|{type:'skipPower'}|{type:'burn';index?:number;indices?:number[];handRevision?:number;targetId?:string;match?:'drawn'|'discard'|'pair'}|{type:'call'}|{type:'undoCall'}|{type:'nextRound'}|{type:'rematch'};
@@ -55,8 +56,16 @@ function handEmptied(s:Game,p:Player):boolean {if(s.players[s.turn]?.id===p.id){
 function score(s:Game) {const jokerRank=jokerRankForRound(s.round);s.dutchWindowFor=null;if(s.drawn){s.discard.push(s.drawn.card);s.drawn=null;}const base:Record<string,number>={},penalty:Record<string,number>={},hands:Record<string,Card[]>={};for(const p of s.players){base[p.id]=p.hand.reduce((v,c)=>v+value(c,jokerRank),0);penalty[p.id]=0;hands[p.id]=structuredClone(p.hand);}
  if(s.caller){const others=s.players.filter(p=>p.id!==s.caller).map(p=>base[p.id]);const success=s.rules.callerMustBeLowest?base[s.caller]<Math.min(...others):base[s.caller]<=Math.min(...others);
   // A failed call costs the caller a flat points penalty. No cards are drawn or carried into the next round.
-  if(!success)penalty[s.caller]=s.rules.callPenalty;}const scores=Object.fromEntries(s.players.map(p=>[p.id,base[p.id]+penalty[p.id]]));const min=Math.min(...Object.values(scores));s.history.push({round:s.round,jokerRank,caller:s.caller,autoDutch:s.autoDutch??null,scores,base,penalty,hands,winners:s.players.filter(p=>scores[p.id]===min).map(p=>p.id)});s.phase=s.round>=s.rules.rounds?'finished':'results';s.drawn=null;s.reveals={};s.power=null;s.handPower=null;s.handPowerQueue=[];s.peeks={};s.jackReveals={};s.reactionWindow=null;s.deadline=null;s.message=s.phase==='finished'?'Good company. Great game.':'Cards on the table. Lowest score takes the round.';}
-function advance(s:Game,now:number){s.dutchWindowFor=s.players[s.turn]?.id??null;s.reveals={};s.drawn=null;s.handPower=null;s.handPowerQueue=[];s.power=null;s.turns++;if(s.caller){s.finalTurns--;if(s.finalTurns<=0){score(s);return;}}if(s.turns>=s.rules.maxTurns){score(s);return;}
+ if(!success)penalty[s.caller]=s.rules.callPenalty;}const scores=Object.fromEntries(s.players.map(p=>[p.id,base[p.id]+penalty[p.id]]));const min=Math.min(...Object.values(scores));s.history.push({round:s.round,jokerRank,caller:s.caller,autoDutch:s.autoDutch??null,scores,base,penalty,hands,winners:s.players.filter(p=>scores[p.id]===min).map(p=>p.id)});s.phase=s.round>=s.rules.rounds?'finished':'results';s.drawn=null;s.reveals={};s.power=null;s.handPower=null;s.handPowerQueue=[];s.peeks={};s.jackReveals={};s.reactionWindow=null;s.deadline=null;s.message=s.phase==='finished'?'Good company. Great game.':'Cards on the table. Lowest score takes the round.';}
+function finalReaction(s:Game,now:number){
+ const top=s.discard.at(-1);
+ if(s.rules.burning==='off'||!top){score(s);return;}
+ const deadline=now+FINAL_REACTION_MS;
+ s.phase='reaction';s.deadline=deadline;s.drawn=null;s.dutchWindowFor=null;
+ s.reactionWindow={rank:top.rank,value:value(top,jokerRankForRound(s.round)),deadline};
+ s.message='Final free throws: match the discard before the five-second window closes.';
+}
+function advance(s:Game,now:number){s.dutchWindowFor=s.players[s.turn]?.id??null;s.reveals={};s.drawn=null;s.handPower=null;s.handPowerQueue=[];s.power=null;s.turns++;if(s.caller){s.finalTurns--;if(s.finalTurns<=0){finalReaction(s,now);return;}}if(s.turns>=s.rules.maxTurns){score(s);return;}
  // After an off-turn empty hand the lap closes with the moderator; empty hands sit the rest out.
  if(s.autoDutch&&s.players[s.turn]?.id===s.moderator){score(s);return;}
  s.turn=(s.turn+1)%s.players.length;
@@ -74,7 +83,7 @@ function startHandPower(s:Game,ownerId:string,rank:number,count:number,resume:Ha
   s.message=`${s.players.find(p=>p.id===ownerId)!.name} earned ${count} private peek${count===1?'':'s'}.`;
   return false;
  }
- if(s.handPower){const existing=[s.handPower,...s.handPowerQueue].find(q=>q.ownerId===ownerId&&q.kind===kind);if(existing)existing.remaining+=count;else s.handPowerQueue.push({kind,ownerId,remaining:count,resume:'continue',remainingTurnMs:0});if(resume==='advance')s.handPower.resume='advance';s.message=`${s.players.find(p=>p.id===ownerId)!.name} earned ${count} more swaps.`;return true;}
+ if(s.handPower){const existing=[s.handPower,...s.handPowerQueue].find(q=>q.ownerId===ownerId&&q.kind===kind);if(existing)existing.remaining+=count;else s.handPowerQueue.push({kind,ownerId,remaining:count,resume:'continue',remainingTurnMs:0});if(resume==='advance'||resume==='reaction')s.handPower.resume=resume;s.message=`${s.players.find(p=>p.id===ownerId)!.name} earned ${count} more swaps.`;return true;}
  s.handPower={kind,ownerId,remaining:count,resume,remainingTurnMs:Math.max(0,(s.deadline??now)-now)};
  s.phase='power';s.power=kind;s.deadline=now+s.rules.turnSeconds*1000;s.reveals={};
  s.message=`${s.players.find(p=>p.id===ownerId)!.name} discarded ${count} hand Queen${count===1?'':'s'}: ${count} blind swap${count===1?'':'s'}.`;return true;
@@ -84,8 +93,13 @@ function finishHandPower(s:Game,now:number,all=false){
  if(q.remaining>0){s.message=`${q.remaining} ${q.kind==='blindSwap'?'blind swap':'private peek'}${q.remaining===1?'':'s'} remaining.`;return;}
  const next=s.handPowerQueue.shift();if(next){next.resume=q.resume;next.remainingTurnMs=q.remainingTurnMs;s.handPower=next;s.power=next.kind;s.phase='power';s.deadline=now+s.rules.turnSeconds*1000;s.reveals={};s.message=`${s.players.find(p=>p.id===next.ownerId)!.name} has ${next.remaining} ${next.kind==='blindSwap'?'swaps':'peeks'} ready.`;return;}
  s.handPower=null;s.power=null;
- const turnHolder=s.players[s.turn];if(turnHolder&&!turnHolder.hand.length){score(s);return;}for(const p of s.players)if(!p.hand.length)s.autoDutch??=p.id;
- if(q.resume==='advance')advance(s,now);
+ const turnHolder=s.players[s.turn];if(turnHolder&&!turnHolder.hand.length&&q.resume!=='reaction'&&!(q.resume==='advance'&&s.caller)){score(s);return;}if(q.resume!=='reaction')for(const p of s.players)if(!p.hand.length)s.autoDutch??=p.id;
+ if(q.resume==='reaction'){
+  if(!s.caller){s.turns=Math.max(0,s.turns-1);advance(s,now);}
+  else if(!s.reactionWindow||now>=s.reactionWindow.deadline)score(s);
+  else{s.phase='reaction';s.deadline=s.reactionWindow.deadline;s.message='Final free throws: match the discard before time runs out.';}
+ }
+ else if(q.resume==='advance')advance(s,now);
  else{s.phase='playing';s.deadline=now+q.remainingTurnMs;s.message='Free throw complete. The interrupted turn continues.';}
 }
 function cancelDutchIfSwapped(s:Game,playerIds:string[]):boolean {if(!s.caller||!playerIds.includes(s.caller))return false;s.caller=null;s.finalTurns=0;return true;}
@@ -119,7 +133,7 @@ export function applyAction(g:Game,actor:string,a:Action,now:number,cards?:Card[
  const playing=()=>assert(s.phase==='playing','That action is not available right now.');
  assert(!s.pendingCall||a.type==='undoCall','Dutch was just called — wait a moment or undo it.');
  switch(a.type){
- case 'reorder':assert(['choosing','peeking','playing','power'].includes(s.phase),'Cards can only be reordered during a round.');assert(Number.isInteger(a.from)&&Number.isInteger(a.to)&&a.from!==a.to,'Choose two different card positions.');indexOf(p,a.from);indexOf(p,a.to);assert(a.handRevision===p.handRevision,'Your hand changed. Choose your cards again.');{const remap=(index:number)=>index===a.from?a.to:a.from<a.to&&index>a.from&&index<=a.to?index-1:a.to<a.from&&index>=a.to&&index<a.from?index+1:index;const [moved]=p.hand.splice(a.from,1);p.hand.splice(a.to,0,moved);p.peeked=p.peeked.map(remap);for(const [owner,reveals]of Object.entries(s.reveals))for(const reveal of reveals)if(owner===actor&&reveal.owner===actor)reveal.index=remap(reveal.index);s.swapEvent={version:s.version+1,actorId:actor,pairs:[],highlightSlots:[{playerId:p.id,index:a.to,back:moved.back}],move:{playerId:p.id,from:a.from,to:a.to},label:`${p.name} moved a card.`};}break;
+ case 'reorder':assert(['choosing','peeking','playing','power','reaction'].includes(s.phase),'Cards can only be reordered during a round.');assert(Number.isInteger(a.from)&&Number.isInteger(a.to)&&a.from!==a.to,'Choose two different card positions.');indexOf(p,a.from);indexOf(p,a.to);assert(a.handRevision===p.handRevision,'Your hand changed. Choose your cards again.');{const remap=(index:number)=>index===a.from?a.to:a.from<a.to&&index>a.from&&index<=a.to?index-1:a.to<a.from&&index>=a.to&&index<a.from?index+1:index;const [moved]=p.hand.splice(a.from,1);p.hand.splice(a.to,0,moved);p.peeked=p.peeked.map(remap);for(const [owner,reveals]of Object.entries(s.reveals))for(const reveal of reveals)if(owner===actor&&reveal.owner===actor)reveal.index=remap(reveal.index);s.swapEvent={version:s.version+1,actorId:actor,pairs:[],highlightSlots:[{playerId:p.id,index:a.to,back:moved.back}],move:{playerId:p.id,from:a.from,to:a.to},label:`${p.name} moved a card.`};}break;
  case 'ready':assert(s.phase==='lobby','The game has already started.');assert(typeof a.ready==='boolean','Invalid ready status.');p.ready=a.ready;break;
  case 'rules':host();assert(s.phase==='lobby','House rules are locked during a match.');s.rules=validateRules({...s.rules,...a.rules});s.players.forEach(p=>p.ready=false);break;
  case 'start':host();assert(s.phase==='lobby','The match has already started.');assert(s.players.length>=2,'Invite at least one other player.');assert(cards,'A shuffled deck is required.');round(s,cards,now);break;
@@ -148,8 +162,8 @@ export function applyAction(g:Game,actor:string,a:Action,now:number,cards?:Card[
   if(cancelled)s.message='Dutch cancelled — the caller’s hand was swapped. Play continues.';
  }break;
  case 'skipPower':powerTurn();assert(s.phase==='power','No power is pending.');if(s.handPower)finishHandPower(s,now);else advance(s,now);break;
- case 'burn':assert(s.phase==='playing'||(s.phase==='power'&&!!s.handPower),'Free throws are not available right now.');assert(s.rules.burning!=='off','Free throws are disabled at this table.');s.rules.burnAnytime=true;{
-  const wasPower=s.phase==='power';
+ case 'burn':assert(s.phase==='playing'||s.phase==='reaction'||(s.phase==='power'&&!!s.handPower),'Free throws are not available right now.');assert(s.rules.burning!=='off','Free throws are disabled at this table.');if(s.phase==='reaction')assert(s.deadline!==null&&now<s.deadline,'The final free-throw window has closed.');if(s.caller&&s.finalTurns===0&&s.reactionWindow)assert(now<s.reactionWindow.deadline,'The final free-throw window has closed.');s.rules.burnAnytime=true;{
+  const wasPower=s.phase==='power',wasReaction=s.phase==='reaction';
   const indices=a.indices??(a.index===undefined?[]:[a.index]);assert(Array.isArray(indices)&&indices.length>0&&indices.length<=p.hand.length,'Select one or more hand cards.');assert(new Set(indices).size===indices.length,'Choose each hand card only once.');indices.forEach(i=>indexOf(p,i));
   assert(a.match===undefined||a.match==='drawn'||a.match==='discard'||a.match==='pair','Choose a valid free throw target.');
   if(a.match==='pair'){
@@ -197,7 +211,7 @@ export function applyAction(g:Game,actor:string,a:Action,now:number,cards?:Card[
    if(ownDraw){s.discard.push(s.drawn!.card);s.drawn=null;}
    s.discard.push(...selected);p.hand=p.hand.filter((_,i)=>!indices.includes(i));s.reveals={};openReaction(s,selected.at(-1)!,now);s.swapEvent={version:s.version+1,actorId:actor,pairs:[],discardChanged:true,thrown:{count:selected.length},label:ownDraw?'Draw matched · cards discarded':'Free throw'};
    const powerRank=selected.find(c=>c.rank===11||c.rank===12)?.rank??0;const powerCount=selected.filter(c=>c.rank===powerRank).length;
-   if(!startHandPower(s,actor,powerRank,powerCount,ownDraw?'advance':'continue',now)){if(wasPower){if(ownDraw&&s.handPower)s.handPower.resume='advance';}else if(!p.hand.length){if(!handEmptied(s,p))break;}else if(ownDraw)advance(s,now);s.message=`${p.name} made a free throw! ${selected.length} fewer card${selected.length===1?'':'s'}.`;}
+   if(!startHandPower(s,actor,powerRank,powerCount,wasReaction?'reaction':ownDraw?'advance':'continue',now)){if(wasPower){if(ownDraw&&s.handPower)s.handPower.resume='advance';}else if(wasReaction){/* Keep the final window open for everyone. */}else if(!p.hand.length){if(!handEmptied(s,p))break;}else if(ownDraw)advance(s,now);s.message=`${p.name} made a free throw! ${selected.length} fewer card${selected.length===1?'':'s'}.`;}
   }else {const penalty=take(s);if(penalty)p.hand.push(penalty);s.message=penalty?`Wrong free throw. ${p.name} takes a penalty card.`:`Wrong free throw. No penalty card is available.`;}
  }break;
  case 'call':playing();assert(!s.drawn,'The next draw has started; the Dutch window is closed.');assert(!s.caller,'Dutch has already been called.');assert(canCallDutch(s,actor),'Call Dutch before your draw, or just after your turn before the next player draws.');{const onOwnTurn=s.players[s.turn].id===actor;s.pendingCall={actor,onOwnTurn,deadline:now+DUTCH_UNDO_MS};}s.message=`${p.name} called DUTCH — undo if that was a mistake.`;break;
@@ -215,7 +229,8 @@ export function expireTurn(g:Game,now:number):Game {
  // the version — is just tidying the broadcast state, never something clients need to resync over.
  const windowExpired=!!g.reactionWindow&&now>=g.reactionWindow.deadline;
  const s=structuredClone(g);if(windowExpired)s.reactionWindow=null;
- if(s.phase==='choosing'){startPeek(s,DEFAULT_PEEK_COUNT,now);}else if(s.phase==='peeking'){s.players.forEach(p=>p.peekDone=true);s.reveals={};s.phase='playing';s.deadline=now+s.rules.turnSeconds*1000;s.message='The table is open. Let’s play.';}else if(s.phase==='power'&&s.handPower){finishHandPower(s,now,true);}else if(s.phase==='playing'||s.phase==='power'){if(s.drawn){s.discard.push(s.drawn.card);}advance(s,now);s.message='Time’s up. The turn passes.';}s.version++;return s;}
+ if(s.phase==='reaction')score(s);
+ else if(s.phase==='choosing'){startPeek(s,DEFAULT_PEEK_COUNT,now);}else if(s.phase==='peeking'){s.players.forEach(p=>p.peekDone=true);s.reveals={};s.phase='playing';s.deadline=now+s.rules.turnSeconds*1000;s.message='The table is open. Let’s play.';}else if(s.phase==='power'&&s.handPower){finishHandPower(s,now,true);}else if(s.phase==='playing'||s.phase==='power'){if(s.drawn){s.discard.push(s.drawn.card);}advance(s,now);s.message='Time’s up. The turn passes.';}s.version++;return s;}
 export interface PlayerView extends Omit<Player,'hand'|'peeked'> {hand:(Card|null)[];handBacks:CardBack[];connected:boolean}
 export interface GameView extends Omit<Game,'players'|'deck'|'drawn'|'reveals'|'peeks'|'jackReveals'> {players:PlayerView[];roundLabel:number;jokerRank:number|null;deckCount:number;deckBack:CardBack|null;drawn:{card:Card|null;back:CardBack;fromDeck:boolean}|null;reveals:{owner:string;index:number;card:Card}[];peeks:number;you:string}
 export function viewFor(s:Game,id:string,connected:string[]=[]):GameView {

@@ -114,7 +114,7 @@ export default function App() {
   };
   const inGame =
     !!room.state &&
-    ["choosing", "peeking", "playing", "power"].includes(room.state.phase);
+    ["choosing", "peeking", "playing", "power", "reaction"].includes(room.state.phase);
   return (
     <div
       ref={root}
@@ -870,7 +870,7 @@ function RulesContent({ state }: { state: GameView | null }) {
               [
                 "02",
                 "Make your move",
-                "Tap the deck or the discard to draw. Tap one of your cards, or drag the new card onto it, to swap it in. Don’t want a deck card? Tap the discard pile or flick the card up. Drag your own cards to reorder them. A taken discard must be swapped in. If the new card matches the cards it replaces, they are all discarded.",
+                "Tap the deck or the discard to draw. Other players see only the back of a deck draw, but see a taken discard face-up as it travels. Tap one of your cards, or drag the new card onto it, to swap it in. Don’t want a deck card? Tap Discard below it or flick the card up. Drag your own cards to reorder them. A taken discard must be swapped in. If the new card matches the cards it replaces, they are all discarded.",
               ],
               [
                 "03",
@@ -880,7 +880,7 @@ function RulesContent({ state }: { state: GameView | null }) {
               [
                 "04",
                 "Call your shot",
-                "Declare Dutch before you draw, or just after your turn until the next player draws. Every opponent gets one final turn, then all cards are revealed. If the caller’s card is swapped, Dutch is cancelled. A caller who isn’t the lowest draws one extra card for every player at or below their score, and those cards count. Emptying your hand is an automatic Dutch: on your own turn the round ends at once; on someone else’s turn the round ends when the moderator finishes their turn.",
+                "Declare Dutch before you draw, or just after your turn until the next player draws. Every opponent gets one final turn. After the last turn, everyone has five seconds to match the final discard with a free throw before scores appear. If the caller’s card is swapped, Dutch is cancelled. A caller who isn’t the lowest draws one extra card for every player at or below their score, and those cards count. Emptying your hand is an automatic Dutch: on your own turn the round ends at once; on someone else’s turn the round ends when the moderator finishes their turn.",
               ],
             ].map(([n, t, d]) => (
               <div key={n}>

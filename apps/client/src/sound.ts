@@ -41,6 +41,17 @@ export function configureSound(
 
 export function playSound(name: SoundName, options: { rate?: number } = {}) {
   if (!enabled || volume === 0) return;
+  if (name === "whoop") {
+    playSound("burn");
+    let whoop = sounds.get("whoop");
+    if (!whoop) {
+      whoop = new Howl({ src: ["/audio/dutch-alarm.mp3"], volume: 0.85 });
+      sounds.set("whoop", whoop);
+    }
+    whoop.stop();
+    whoop.play();
+    return;
+  }
   let sound = sounds.get(name);
   if (!sound) {
     sound = new Howl({

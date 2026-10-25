@@ -142,14 +142,16 @@ export function GameTable({
   const powerOwner = powerOwnerId(s);
   const powerMine = powerOwner === s.you;
   const activeId =
-    s.phase === "power"
+    s.phase === "reaction"
+      ? null
+      : s.phase === "power"
       ? powerOwner
       : s.phase === "choosing"
         ? (s.moderator ?? null)
         : s.players[s.turn]?.id;
   const disabled =
     !!room.pending || room.status !== "connected" || !!s.pendingCall;
-  const inRound = ["choosing", "peeking", "playing", "power"].includes(s.phase);
+  const inRound = ["choosing", "peeking", "playing", "power", "reaction"].includes(s.phase);
   const peekCount = s.peekCount ?? 2;
   const moderator = s.players.find((p) => p.id === s.moderator);
   const choosing = s.phase === "choosing" && s.moderator === s.you;
@@ -181,6 +183,7 @@ export function GameTable({
   const chipsRef = useRef<HTMLDivElement>(null);
   const queuedSwap = useRef<{ index: number; version: number } | null>(null);
   const pendingMove = useRef<number | null>(null);
+  const dragRef = useRef<Drag | null>(null);
   const handlers = useRef<Handlers>(null!);
 
   const holding = mine && s.phase === "playing" && !!s.drawn;
@@ -188,7 +191,7 @@ export function GameTable({
   const canDraw = !disabled && mine && s.phase === "playing" && !s.drawn;
   const canFreeThrow =
     !disabled &&
-    (s.phase === "playing" || (s.phase === "power" && !!s.handPower)) &&
+    (s.phase === "playing" || s.phase === "reaction" || (s.phase === "power" && !!s.handPower)) &&
     s.rules.burning !== "off" &&
     (!!s.discard.length || tossable);
   const canSelect = canFreeThrow || (holding && !disabled);
@@ -491,31 +494,43 @@ export function GameTable({
 
   // Settle a reorder: once the server's order arrives the cards already sit
   // in their new places, so snap transforms home without a second animation.
+  // Also keep all hand cards neatly aligned whenever card count, revision, or
+  // phase updates, so no card is ever stranded with a stale drag/hover transform.
   useLayoutEffect(() => {
     const revision = pendingMove.current;
-    if (revision === null) return;
     const els = handCards(handRef.current);
-    if (me.handRevision !== revision) {
-      pendingMove.current = null;
-      els.forEach((el, i) => {
-        // .hc's transition is `!important`, so a plain inline override can't
-        // beat it — without `important` here the "instant" snap would still
-        // animate over 0.26s, showing as a confusing second reorder.
-        el.style.setProperty("transition", "none", "important");
-        el.style.transform = fanTransform(els.length, i);
-        el.style.zIndex = String(i);
-        el.classList.remove("lifting");
-      });
-      void handRef.current?.offsetWidth;
-      els.forEach((el) => el.style.removeProperty("transition"));
-    } else if (!room.pending) {
-      pendingMove.current = null;
-      els.forEach((el, i) => {
-        el.style.transform = fanTransform(els.length, i);
-        el.style.zIndex = String(i);
-      });
+    if (revision !== null) {
+      if (me.handRevision !== revision) {
+        pendingMove.current = null;
+        els.forEach((el, i) => {
+          // .hc's transition is `!important`, so a plain inline override can't
+          // beat it — without `important` here the "instant" snap would still
+          // animate over 0.26s, showing as a confusing second reorder.
+          el.style.setProperty("transition", "none", "important");
+          el.style.transform = fanTransform(els.length, i);
+          el.style.zIndex = String(i);
+          el.classList.remove("lifting");
+        });
+        void handRef.current?.offsetWidth;
+        els.forEach((el) => el.style.removeProperty("transition"));
+      } else if (!room.pending) {
+        pendingMove.current = null;
+        els.forEach((el, i) => {
+          el.style.transform = fanTransform(els.length, i);
+          el.style.zIndex = String(i);
+        });
+      }
+      return;
     }
-  }, [me.handRevision, room.pending, room.error]);
+
+    if (dragRef.current?.active) return;
+    els.forEach((el, i) => {
+      el.classList.remove("lifting");
+      el.style.pointerEvents = "";
+      el.style.zIndex = String(i);
+      el.style.transform = fanTransform(els.length, i);
+    });
+  }, [n, me.handRevision, room.pending, room.error, s.phase, s.version]);
 
   // ----- pointer controller: drag to reorder, place, throw and draw -----
   useEffect(() => {
@@ -607,7 +622,9 @@ export function GameTable({
       ) {
         d.kind = "pile";
         const r = d.el.getBoundingClientRect();
-        const ghost = d.el.cloneNode(true) as HTMLElement;
+        const cards = d.el.querySelectorAll<HTMLElement>(".pc");
+        const ghost = cards[cards.length - 1]?.cloneNode(true) as HTMLElement | undefined;
+        if (!ghost) return false;
         ghost.classList.add("drag-ghost");
         Object.assign(ghost.style, {
           left: `${r.left}px`,
@@ -726,7 +743,7 @@ export function GameTable({
         if (cancel) return;
         const slot = d.over && /^hand-(\d+)$/.exec(d.over);
         if (slot) H.draw(d.src as "deck" | "discard", Number(slot[1]));
-        else if (dy > 40) H.draw(d.src as "deck" | "discard");
+        else H.draw(d.src as "deck" | "discard");
       }
     };
     const tap = (d: Drag) => {
@@ -761,6 +778,7 @@ export function GameTable({
         over: null,
       };
       drag = d;
+      dragRef.current = d;
       try {
         src.setPointerCapture(e.pointerId);
       } catch {
@@ -784,32 +802,48 @@ export function GameTable({
         clearTimeout(d.timer);
         if (!begin(d)) {
           drag = null;
+          dragRef.current = null;
           return;
         }
         d.active = true;
       }
       move(d, dx, dy, e.clientX, e.clientY);
     };
+    const cancelDrag = () => {
+      const d = drag;
+      if (!d) return;
+      drag = null;
+      dragRef.current = null;
+      clearTimeout(d.timer);
+      if (d.active) finish(d, 0, true);
+    };
     const end = (e: PointerEvent) => {
       const d = drag;
       if (!d) return;
       drag = null;
+      dragRef.current = null;
       clearTimeout(d.timer);
       const cancel = e.type !== "pointerup";
       if (d.active) finish(d, e.clientY - d.y0, cancel);
       else if (!d.long && !cancel) tap(d);
     };
     root.addEventListener("pointerdown", down);
-    root.addEventListener("pointermove", moveListener);
-    root.addEventListener("pointerup", end);
-    root.addEventListener("pointercancel", end);
-    root.addEventListener("lostpointercapture", end);
+    window.addEventListener("pointermove", moveListener);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    window.addEventListener("blur", cancelDrag);
     return () => {
       root.removeEventListener("pointerdown", down);
-      root.removeEventListener("pointermove", moveListener);
-      root.removeEventListener("pointerup", end);
-      root.removeEventListener("pointercancel", end);
-      root.removeEventListener("lostpointercapture", end);
+      window.removeEventListener("pointermove", moveListener);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      window.removeEventListener("blur", cancelDrag);
+      if (drag) {
+        clearTimeout(drag.timer);
+        if (drag.active) finish(drag, 0, true);
+        drag = null;
+        dragRef.current = null;
+      }
     };
   }, []);
 
@@ -936,9 +970,8 @@ export function GameTable({
     );
     if (held && from) flyFrom(held, from, { duration: 380, rotate: -6 });
   }, [heldId]);
-  // Everyone else sees an opponent's pickup too: a blind back from the deck,
-  // or the public top card from the discard pile folding face-down as it
-  // flies to their seat.
+  // Other players see a deck card's back, or the public face of a card taken
+  // from the discard pile, travel to the drawing player's seat.
   useLayoutEffect(() => {
     const event = s.drawEvent;
     const root = rootRef.current;
@@ -956,7 +989,7 @@ export function GameTable({
       back: event.back,
       card: event.card,
     });
-    const t = setTimeout(() => setPickup(null), 680);
+    const t = setTimeout(() => setPickup(null), 900);
     return () => clearTimeout(t);
   }, [s.drawEvent?.version]);
   const topId = s.discard.at(-1)?.id;
@@ -1113,6 +1146,8 @@ export function GameTable({
   else if (s.phase === "power") {
     hint = `${activeName}’s power`;
     quiet = true;
+  } else if (s.phase === "reaction") {
+    hint = selected.length ? "Throw on pile now" : "Final free throws · 5s";
   } else if (selected.length)
     hint = holding ? "Swap or throw" : "Throw on pile";
   else if (holding) {
@@ -1240,13 +1275,6 @@ export function GameTable({
             }
           >
             {s.discard.at(-1) && <PlayingCard card={s.discard.at(-1)} />}
-            {tossable && (
-              <span className="toss-badge" aria-hidden="true">
-                <svg viewBox="0 0 24 24">
-                  <path d="M12 5v14M6 13l6 6 6-6" />
-                </svg>
-              </span>
-            )}
             {reactionLive && s.reactionWindow && (
               <span
                 key={s.reactionWindow.deadline}
@@ -1356,40 +1384,42 @@ export function GameTable({
           )}
         </div>
 
-        <div
-          className={`hand ${placeable ? "placeable" : ""}`}
-          ref={handRef}
-          style={{ "--n": Math.max(1, n) } as CSSProperties}
-        >
-          <div className="drop-slot" ref={landingRef} />
-          {me.hand.map((card, i) => {
-            const peekable =
-              s.phase === "peeking" &&
-              !me.peekDone &&
-              myPeeks < peekCount &&
-              !card;
-            const pickable =
-              picking && (s.power === "blindSwap" || s.power === "ownPeek");
-            const jackPeekable =
-              jackPeeksPending > 0 && !holding && !selected.length && !picking;
-            return (
-              <button
-                key={i}
-                className={`hc ${selected.includes(i) || myPicked.includes(i) ? "sel" : ""} ${peekable || pickable || jackPeekable ? "beckon" : ""}`}
-                data-src={handInteractive ? `hand-${i}` : undefined}
-                data-drop={`hand-${i}`}
-                data-player-slot={`${me.id}:${i}`}
-                aria-disabled={!handInteractive}
-                aria-pressed={selected.includes(i)}
-                aria-label={`Your card ${i + 1}${card ? `, ${cardName(card)}` : ""}`}
-                style={{ transform: fanTransform(n, i), zIndex: i }}
-                onClick={(e) => e.detail === 0 && tapHand(i, e.shiftKey)}
-              >
-                <PlayingCard card={card} back={me.handBacks?.[i]} />
-                <em className="slot-key">{i + 1}</em>
-              </button>
-            );
-          })}
+        <div className="hand-area">
+          <div
+            className={`hand ${placeable ? "placeable" : ""}`}
+            ref={handRef}
+            style={{ "--n": Math.max(1, n) } as CSSProperties}
+          >
+            <div className="drop-slot" ref={landingRef} />
+            {me.hand.map((card, i) => {
+              const peekable =
+                s.phase === "peeking" &&
+                !me.peekDone &&
+                myPeeks < peekCount &&
+                !card;
+              const pickable =
+                picking && (s.power === "blindSwap" || s.power === "ownPeek");
+              const jackPeekable =
+                jackPeeksPending > 0 && !holding && !selected.length && !picking;
+              return (
+                <button
+                  key={i}
+                  className={`hc ${selected.includes(i) || myPicked.includes(i) ? "sel" : ""} ${peekable || pickable || jackPeekable ? "beckon" : ""}`}
+                  data-src={handInteractive ? `hand-${i}` : undefined}
+                  data-drop={`hand-${i}`}
+                  data-player-slot={`${me.id}:${i}`}
+                  aria-disabled={!handInteractive}
+                  aria-pressed={selected.includes(i)}
+                  aria-label={`Your card ${i + 1}${card ? `, ${cardName(card)}` : ""}`}
+                  style={{ transform: fanTransform(n, i), zIndex: i }}
+                  onClick={(e) => e.detail === 0 && tapHand(i, e.shiftKey)}
+                >
+                  <PlayingCard card={card} back={me.handBacks?.[i]} />
+                  <em className="slot-key">{i + 1}</em>
+                </button>
+              );
+            })}
+          </div>
           {holding && s.drawn && (
             <div className="held-dock">
               <div
@@ -1400,6 +1430,15 @@ export function GameTable({
               >
                 <PlayingCard card={s.drawn.card} back={s.drawn.back} />
               </div>
+              {tossable && (
+                <button
+                  className="held-discard"
+                  data-no-drag
+                  onClick={discardHeld}
+                >
+                  Discard
+                </button>
+              )}
             </div>
           )}
           {(selected.length > 0 ||
@@ -1511,7 +1550,7 @@ export function GameTable({
             } as CSSProperties
           }
         >
-          <span className={`pickup-flip ${pickup.fromDeck ? "" : "open"}`}>
+          <span className={`pickup-flip ${pickup.fromDeck ? "" : "public"}`}>
             <PlayingCard card={pickup.card} back={pickup.back} className="pickup-face" />
             <PlayingCard back={pickup.back} className="pickup-back" />
           </span>
