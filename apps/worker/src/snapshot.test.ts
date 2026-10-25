@@ -1,7 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {addPlayer,applyAction,deck,newGame,viewFor} from '../../../packages/engine/src/index';
 import {restoreSnapshot,SNAPSHOT_SCHEMA} from './snapshot';
-function dealt(){let game=newGame('a');for(const id of ['a','b']){game=addPlayer(game,id,id,0);game=applyAction(game,id,{type:'ready',ready:true},0);}return applyAction(game,'a',{type:'start'},1,deck());}
+function dealt(){let game=newGame('a');for(const id of ['a','b']){game=addPlayer(game,id,id,0);game=applyAction(game,id,{type:'ready',ready:true},0);}game=applyAction(game,'a',{type:'start'},1,deck());game.moderator='b';game.turn=0;return applyAction(game,'b',{type:'peekCount',count:2},1);}
 describe('room snapshot migrations',()=>{
   it('restores schema 7 without changing card identities or public backs',()=>{
     const game=dealt();const restored=restoreSnapshot({schema:SNAPSHOT_SCHEMA,game});

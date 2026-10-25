@@ -5,8 +5,9 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { Check, LogOut, Settings } from "lucide-react";
+import { Check, EyeOff, Gavel, LogOut, Settings } from "lucide-react";
 import {
+  PEEK_CHOICES,
   canCallDutch,
   powerOwnerId,
   type GameView,
@@ -16,7 +17,7 @@ import { EMOTES } from "../../../../packages/protocol/src/index";
 import { Avatar } from "../Avatar";
 import { Diamond } from "../Cards";
 import { SwapAnimation } from "../SwapAnimation";
-import { playSound } from "../sound";
+import { playSound, startDutchAlarm, stopDutchAlarm } from "../sound";
 import { act, emote, usePrefs, useRoom } from "../store";
 import type { ModalName } from "../ui";
 import { PlayingCard, cardName } from "./PlayingCard";
@@ -97,14 +98,51 @@ export function GameTable({
 }) {
   const room = useRoom();
   const effects = usePrefs((p) => p.effects);
-  const me = s.players.find((p) => p.id === s.you)!;
-  const opponents = s.players.filter((p) => p.id !== s.you);
+  // A peeked card (Jack power, Queen-swap peek) turns face-down again after
+  // Done or five seconds. Initial peeks keep their own Done button.
+  const [veiled, setVeiled] = useState<Set<string>>(() => new Set());
+  const revealKey = (owner: string, index: number, id: string) =>
+    `${owner}:${index}:${id}`;
+  const liveReveals =
+    s.phase === "peeking"
+      ? []
+      : s.reveals.filter(
+          (r) => !veiled.has(revealKey(r.owner, r.index, r.card.id)),
+        );
+  const liveKeys = liveReveals.map((r) =>
+    revealKey(r.owner, r.index, r.card.id),
+  );
+  const veil = (keys: string[]) => setVeiled((v) => new Set([...v, ...keys]));
+  useEffect(() => {
+    if (!liveKeys.length) return;
+    const t = setTimeout(() => veil(liveKeys), 5000);
+    return () => clearTimeout(t);
+  }, [liveKeys.join()]);
+  const masked = (p: GameView["players"][number]) =>
+    s.phase === "peeking"
+      ? p
+      : {
+          ...p,
+          hand: p.hand.map((c, i) =>
+            c && veiled.has(revealKey(p.id, i, c.id)) ? null : c,
+          ),
+        };
+  const me = masked(s.players.find((p) => p.id === s.you)!);
+  const opponents = s.players.filter((p) => p.id !== s.you).map(masked);
   const mine = s.players[s.turn]?.id === s.you;
   const powerOwner = powerOwnerId(s);
   const powerMine = powerOwner === s.you;
-  const activeId = s.phase === "power" ? powerOwner : s.players[s.turn]?.id;
+  const activeId =
+    s.phase === "power"
+      ? powerOwner
+      : s.phase === "choosing"
+        ? (s.moderator ?? null)
+        : s.players[s.turn]?.id;
   const disabled = !!room.pending || room.status !== "connected";
-  const inRound = ["peeking", "playing", "power"].includes(s.phase);
+  const inRound = ["choosing", "peeking", "playing", "power"].includes(s.phase);
+  const peekCount = s.peekCount ?? 2;
+  const moderator = s.players.find((p) => p.id === s.moderator);
+  const choosing = s.phase === "choosing" && s.moderator === s.you;
 
   const [selected, setSelected] = useState<number[]>([]);
   const [firstPick, setFirstPick] = useState<Pick | null>(null);
@@ -301,7 +339,7 @@ export function GameTable({
     if (s.phase === "peeking") {
       const ok =
         !me.peekDone &&
-        myPeeks < 2 &&
+        myPeeks < peekCount &&
         !s.reveals.some((r) => r.owner === s.you && r.index === i);
       if (ok) act({ type: "initialPeek", index: i });
       return;
@@ -422,6 +460,29 @@ export function GameTable({
     const hit = (x: number, y: number) =>
       document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-drop]")
         ?.dataset.drop ?? null;
+    // Placing a card shouldn't need aim: anywhere in a generous band over the
+    // hand picks the nearest card, judged from the centre of the dragged card.
+    const nearestSlot = (card: Element) => {
+      const c = card.getBoundingClientRect();
+      const x = c.left + c.width / 2,
+        y = c.top + c.height / 2;
+      const rects = handCards(handRef.current).map((e) =>
+        e.getBoundingClientRect(),
+      );
+      if (!rects.length) return null;
+      const h = rects[0].height;
+      const top = Math.min(...rects.map((r) => r.top));
+      const left = Math.min(...rects.map((r) => r.left));
+      const right = Math.max(...rects.map((r) => r.right));
+      if (y < top - h * 0.9 || x < left - h * 0.7 || x > right + h * 0.7)
+        return null;
+      let best = 0;
+      rects.forEach((r, i) => {
+        const mid = (q: DOMRect) => Math.abs(q.left + q.width / 2 - x);
+        if (mid(r) < mid(rects[best])) best = i;
+      });
+      return `hand-${best}`;
+    };
     const mark = (name: string | null) => {
       root
         .querySelectorAll(".drop-target")
@@ -554,14 +615,11 @@ export function GameTable({
         mark(d.over);
       } else if (d.kind === "held") {
         d.el.style.transform = `translate(${dx}px, ${dy}px) rotate(${dx / 30}deg) scale(1.05)`;
-        d.over =
-          over?.startsWith("hand-") || (over === "discard" && H.tossable)
-            ? over
-            : null;
+        d.over = over === "discard" && H.tossable ? over : nearestSlot(d.el);
         mark(d.over);
       } else if (d.kind === "pile" && d.ghost) {
         d.ghost.style.transform = `translate(${dx}px, ${dy}px) rotate(${dx / 30}deg) scale(1.05)`;
-        d.over = over?.startsWith("hand-") ? over : null;
+        d.over = nearestSlot(d.ghost);
         mark(d.over);
       }
     };
@@ -714,6 +772,8 @@ export function GameTable({
         setEmotes(false);
       } else if (k === "?") setKeys((v) => !v);
       else if (disabled || !inRound) return;
+      else if (choosing && /^Digit[0-2]$/.test(event.code))
+        act({ type: "peekCount", count: Number(event.code.slice(5)) });
       else if (digit) {
         const i = Number(digit[1]) - 1;
         if (i >= n) return;
@@ -758,7 +818,8 @@ export function GameTable({
   const motionOn = effects && !reducedMotion();
   const dealt = useRef<string | null>(null);
   useLayoutEffect(() => {
-    if (s.phase !== "peeking") return;
+    // Every round opens with the moderator choosing; that is when the deal happens.
+    if (s.phase !== "choosing") return;
     const key = `${s.round}:${s.history.length}`;
     if (dealt.current === key) return;
     dealt.current = key;
@@ -861,6 +922,26 @@ export function GameTable({
     }
     caller.current = s.caller;
   }, [s.caller]);
+  // The Dutch alarm loops for the whole last lap, at the player's chosen level.
+  const alarmOn = usePrefs((p) => p.sound && p.dutchAlarm);
+  const alarmVolume = usePrefs((p) => p.alarmVolume);
+  const lastLap = !!s.caller && ["playing", "power"].includes(s.phase);
+  useEffect(() => {
+    if (alarmOn && lastLap) startDutchAlarm(alarmVolume);
+    else stopDutchAlarm();
+  }, [alarmOn, alarmVolume, lastLap]);
+  useEffect(() => stopDutchAlarm, []);
+  const outOfCards = useRef(s.autoDutch);
+  useEffect(() => {
+    if (s.autoDutch && s.autoDutch !== outOfCards.current) {
+      const name = s.players.find((p) => p.id === s.autoDutch)?.name ?? "";
+      setStamp(`${name} is out · last lap`);
+      const t = setTimeout(() => setStamp(null), 1900);
+      outOfCards.current = s.autoDutch;
+      return () => clearTimeout(t);
+    }
+    outOfCards.current = s.autoDutch;
+  }, [s.autoDutch]);
   const message = useRef(s.message);
   useEffect(() => {
     if (s.message === message.current) return;
@@ -880,7 +961,12 @@ export function GameTable({
     const planned = plan.length
       ? cards.map((c) => c.offsetLeft + c.offsetWidth / 2)
       : [];
-    const all = xs.length ? xs : planned;
+    const peeked = liveReveals
+      .filter((r) => r.owner === s.you)
+      .map((r) => cards[r.index])
+      .filter(Boolean)
+      .map((c) => c.offsetLeft + c.offsetWidth / 2);
+    const all = xs.length ? xs : planned.length ? planned : peeked;
     chips.style.left = all.length
       ? `${all.reduce((a, b) => a + b, 0) / all.length}px`
       : "50%";
@@ -892,8 +978,15 @@ export function GameTable({
   let hint = "";
   let quiet = false;
   let routine = false;
-  if (s.phase === "peeking")
-    hint = me.peekDone ? "Waiting for others" : `Peek two cards`;
+  if (s.phase === "choosing") {
+    hint = choosing
+      ? "Cards to see?"
+      : `${moderator?.name ?? "Moderator"} is choosing`;
+    quiet = !choosing;
+  } else if (s.phase === "peeking")
+    hint = me.peekDone
+      ? "Waiting for others"
+      : `Peek ${["no", "one", "two"][peekCount] ?? peekCount} card${peekCount === 1 ? "" : "s"}`;
   else if (picking)
     hint =
       s.power === "blindSwap"
@@ -979,6 +1072,7 @@ export function GameTable({
             x={positions[i]?.x ?? 0}
             y={positions[i]?.y ?? 0}
             active={s.phase !== "peeking" && activeId === p.id}
+            moderator={s.moderator === p.id}
             pickable={pickOpponents && !disabled}
             picked={pickedOf(p.id)}
             onOpen={() => setTray(p.id)}
@@ -1039,6 +1133,24 @@ export function GameTable({
             )}
           </div>
         </div>
+        {choosing && (
+          <div
+            className="mod-pick"
+            role="group"
+            aria-label="How many cards everyone may see"
+          >
+            {PEEK_CHOICES.map((count) => (
+              <button
+                key={count}
+                disabled={disabled}
+                onClick={() => act({ type: "peekCount", count })}
+                aria-label={`${count} card${count === 1 ? "" : "s"}`}
+              >
+                {count}
+              </button>
+            ))}
+          </div>
+        )}
         {trayPlayer && (
           <Tray
             player={trayPlayer}
@@ -1062,6 +1174,11 @@ export function GameTable({
               name={me.name}
               active={activeId === me.id && s.phase !== "peeking"}
             />
+            {s.moderator === me.id && (
+              <span className="mod-badge" aria-label="You moderate this round">
+                <Gavel size={12} />
+              </span>
+            )}
             <span className="smile" aria-hidden="true">
               <svg viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="9" />
@@ -1098,7 +1215,10 @@ export function GameTable({
           <div className="drop-slot" ref={landingRef} />
           {me.hand.map((card, i) => {
             const peekable =
-              s.phase === "peeking" && !me.peekDone && myPeeks < 2 && !card;
+              s.phase === "peeking" &&
+              !me.peekDone &&
+              myPeeks < peekCount &&
+              !card;
             const pickable =
               picking && (s.power === "blindSwap" || s.power === "ownPeek");
             return (
@@ -1131,7 +1251,9 @@ export function GameTable({
               </div>
             </div>
           )}
-          {(selected.length > 0 || plan.length > 0) && (
+          {(selected.length > 0 ||
+            plan.length > 0 ||
+            liveReveals.length > 0) && (
             <div className="chips" ref={chipsRef}>
               {selected.length > 0 && holding && (
                 <button
@@ -1155,6 +1277,16 @@ export function GameTable({
                     <path d="M12 19V5M6 11l6-6 6 6" />
                   </svg>
                   {selected.length}
+                </button>
+              )}
+              {liveReveals.length > 0 && (
+                <button
+                  className="chip hot"
+                  aria-label="Done looking, turn the card face-down"
+                  onClick={() => veil(liveKeys)}
+                >
+                  <EyeOff size={15} />
+                  Done
                 </button>
               )}
               {plan.length > 0 && (

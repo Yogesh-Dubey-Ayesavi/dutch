@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { Gavel } from "lucide-react";
 import type { GameView } from "../../../../packages/engine/src/index";
 import { Avatar } from "../Avatar";
 import { useRoom } from "../store";
@@ -28,6 +29,7 @@ export function Seat({
   x,
   y,
   active,
+  moderator,
   pickable,
   picked,
   onOpen,
@@ -37,6 +39,7 @@ export function Seat({
   x: number;
   y: number;
   active: boolean;
+  moderator: boolean;
   pickable: boolean;
   picked: number[];
   onOpen: () => void;
@@ -98,6 +101,11 @@ export function Seat({
           connected={p.connected}
           active={active}
         />
+        {moderator && (
+          <span className="mod-badge" aria-label="Moderator">
+            <Gavel size={11} />
+          </span>
+        )}
         <span className="seat-name">{p.name}</span>
         {s.phase === "peeking" && p.peekDone && (
           <span className="seat-check" aria-label="Locked in">

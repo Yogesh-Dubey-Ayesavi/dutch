@@ -30,7 +30,12 @@ import {
   type Rules,
 } from "../../../packages/engine/src/index";
 import { act, connect, leave, seat, usePrefs, useRoom } from "./store";
-import { configureSound, playSound } from "./sound";
+import {
+  configureSound,
+  playSound,
+  startDutchAlarm,
+  stopDutchAlarm,
+} from "./sound";
 import { Diamond, HeroCards } from "./Cards";
 import { AvatarArt } from "./Avatar";
 import { Lobby } from "./Lobby";
@@ -100,7 +105,8 @@ export default function App() {
     else window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const inGame =
-    !!room.state && ["peeking", "playing", "power"].includes(room.state.phase);
+    !!room.state &&
+    ["choosing", "peeking", "playing", "power"].includes(room.state.phase);
   return (
     <div
       ref={root}
@@ -718,6 +724,37 @@ function SettingsContent() {
         <span>{Math.round(p.volume * 100)}%</span>
       </label>
       <Toggle
+        title="Dutch alarm"
+        description="A cheeky loop while the last lap plays out after a Dutch call"
+        checked={p.dutchAlarm}
+        onChange={(v) => p.set({ dutchAlarm: v })}
+      />
+      <label className="volume-row">
+        <span>Alarm</span>
+        <input
+          aria-label="Dutch alarm volume"
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          value={p.alarmVolume}
+          disabled={!p.dutchAlarm || !p.sound}
+          onChange={(e) => p.set({ alarmVolume: Number(e.target.value) })}
+        />
+        <span>{Math.round(p.alarmVolume * 100)}%</span>
+      </label>
+      <button
+        className="sound-chip"
+        disabled={!p.sound || !p.dutchAlarm}
+        onClick={() => {
+          startDutchAlarm(p.alarmVolume);
+          setTimeout(stopDutchAlarm, 3200);
+        }}
+      >
+        <Volume2 size={12} />
+        Preview alarm
+      </button>
+      <Toggle
         title="Cinematic effects"
         description="Floating particles, card motion, and celebrations"
         checked={p.effects}
@@ -736,6 +773,7 @@ function SettingsContent() {
               "draw",
               "snap",
               "penalty",
+              "burn",
               "power",
               "dutch",
               "tick",
@@ -786,7 +824,7 @@ function RulesContent({ state }: { state: GameView | null }) {
               [
                 "01",
                 "Meet your cards",
-                "Two full decks are shuffled together: 104 cards, 52 with red backs and 52 with black backs. Everyone gets four face-down cards. Privately inspect any two, then lock in your memory. Back design identifies the deck, not the suit.",
+                "Two full decks are shuffled together: 104 cards, 52 with red backs and 52 with blue backs. Everyone gets four face-down cards. Each round has a moderator: the table owner first, then the next player clockwise. The moderator decides whether everyone may look at 0, 1 or 2 of their cards, and the player after the moderator starts. Back design identifies the deck, not the suit.",
               ],
               [
                 "02",
@@ -801,7 +839,7 @@ function RulesContent({ state }: { state: GameView | null }) {
               [
                 "04",
                 "Call your shot",
-                "Declare Dutch before you draw, or just after your turn until the next player draws from either pile. Every opponent gets one final turn, then all cards are revealed. If the caller’s card is swapped, Dutch is cancelled and normal play resumes. Emptying your hand ends the round after any earned hand-card powers are resolved.",
+                "Declare Dutch before you draw, or just after your turn until the next player draws. Every opponent gets one final turn, then all cards are revealed. If the caller’s card is swapped, Dutch is cancelled. A caller who isn’t the lowest draws one extra card for every player at or below their score, and those cards count. Emptying your hand is an automatic Dutch: on your own turn the round ends at once; on someone else’s turn the round ends when the moderator finishes their turn.",
               ],
             ].map(([n, t, d]) => (
               <div key={n}>
@@ -902,7 +940,11 @@ function RulesContent({ state }: { state: GameView | null }) {
                   r.burning === "off" ? "Off" : `Same ${r.burning}`,
                 ],
                 ["Free throw window", "Always — any player’s turn"],
-                ["Failed call penalty", `${r.callPenalty} points`],
+                ["Failed call", "One extra card per player at or below you"],
+                [
+                  "Moderator",
+                  "Moves clockwise each round; picks 0, 1 or 2 cards to see",
+                ],
                 [
                   "Successful call",
                   r.callerMustBeLowest
@@ -944,9 +986,7 @@ function HouseRuleEditor({ state }: { state: GameView }) {
     >
       <p className="form-note">2–8 players · 13 rounds in every match</p>
       <div className="rule-form-pair">
-        {(
-          ["turnSeconds", "peekSeconds", "callPenalty", "maxTurns"] as const
-        ).map((key) => (
+        {(["turnSeconds", "peekSeconds", "maxTurns"] as const).map((key) => (
           <label key={key}>
             <span className="field-label">
               {
@@ -954,7 +994,6 @@ function HouseRuleEditor({ state }: { state: GameView }) {
                   rounds: "Rounds",
                   turnSeconds: "Turn timer (seconds)",
                   peekSeconds: "Peek time (seconds)",
-                  callPenalty: "Calling penalty",
                   maxTurns: "Maximum turns",
                 }[key]
               }
@@ -968,7 +1007,6 @@ function HouseRuleEditor({ state }: { state: GameView }) {
                   rounds: 1,
                   turnSeconds: 10,
                   peekSeconds: 10,
-                  callPenalty: 0,
                   maxTurns: 10,
                 }[key]
               }
@@ -977,7 +1015,6 @@ function HouseRuleEditor({ state }: { state: GameView }) {
                   rounds: 10,
                   turnSeconds: 120,
                   peekSeconds: 60,
-                  callPenalty: 50,
                   maxTurns: 500,
                 }[key]
               }

@@ -317,6 +317,12 @@
   height: 43px;
   border-radius: 3px;
 }
+.result-card.extra .pc {
+  box-shadow: 0 0 0 2px var(--d-rose);
+}
+.result-card.extra small {
+  color: var(--d-rose);
+}
 .result-card small {
   font-size: 10px;
   color: var(--d-mist);
