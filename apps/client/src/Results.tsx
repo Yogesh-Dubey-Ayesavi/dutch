@@ -114,13 +114,13 @@ export function Results({ state: s }: { state: GameView }) {
             </span>
             <span className="points">
               <b>{result.scores[p.id]}</b>
+              {finished && <small>Match {total(p.id)}</small>}
               {(result.penaltyCards?.[p.id] ?? 0) > 0 && (
                 <small>
                   +{result.penaltyCards![p.id]} card
                   {result.penaltyCards![p.id] === 1 ? "" : "s"}
                 </small>
               )}
-              {s.history.length > 1 && <small>Σ {total(p.id)}</small>}
             </span>
           </li>
         ))}

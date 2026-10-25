@@ -30,7 +30,12 @@ import {
   type Rules,
 } from "../../../packages/engine/src/index";
 import { act, connect, leave, seat, usePrefs, useRoom } from "./store";
-import { configureSound, playSound } from "./sound";
+import {
+  configureSound,
+  playSound,
+  startDutchAlarm,
+  stopDutchAlarm,
+} from "./sound";
 import { Diamond, HeroCards } from "./Cards";
 import { AvatarArt } from "./Avatar";
 import { Lobby } from "./Lobby";
@@ -100,7 +105,8 @@ export default function App() {
     else window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const inGame =
-    !!room.state && ["choosing", "peeking", "playing", "power"].includes(room.state.phase);
+    !!room.state &&
+    ["choosing", "peeking", "playing", "power"].includes(room.state.phase);
   return (
     <div
       ref={root}
@@ -718,6 +724,37 @@ function SettingsContent() {
         <span>{Math.round(p.volume * 100)}%</span>
       </label>
       <Toggle
+        title="Dutch alarm"
+        description="A cheeky loop while the last lap plays out after a Dutch call"
+        checked={p.dutchAlarm}
+        onChange={(v) => p.set({ dutchAlarm: v })}
+      />
+      <label className="volume-row">
+        <span>Alarm</span>
+        <input
+          aria-label="Dutch alarm volume"
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          value={p.alarmVolume}
+          disabled={!p.dutchAlarm || !p.sound}
+          onChange={(e) => p.set({ alarmVolume: Number(e.target.value) })}
+        />
+        <span>{Math.round(p.alarmVolume * 100)}%</span>
+      </label>
+      <button
+        className="sound-chip"
+        disabled={!p.sound || !p.dutchAlarm}
+        onClick={() => {
+          startDutchAlarm(p.alarmVolume);
+          setTimeout(stopDutchAlarm, 3200);
+        }}
+      >
+        <Volume2 size={12} />
+        Preview alarm
+      </button>
+      <Toggle
         title="Cinematic effects"
         description="Floating particles, card motion, and celebrations"
         checked={p.effects}
@@ -736,6 +773,7 @@ function SettingsContent() {
               "draw",
               "snap",
               "penalty",
+              "burn",
               "power",
               "dutch",
               "tick",
@@ -903,7 +941,10 @@ function RulesContent({ state }: { state: GameView | null }) {
                 ],
                 ["Free throw window", "Always — any player’s turn"],
                 ["Failed call", "One extra card per player at or below you"],
-                ["Moderator", "Moves clockwise each round; picks 0, 1 or 2 cards to see"],
+                [
+                  "Moderator",
+                  "Moves clockwise each round; picks 0, 1 or 2 cards to see",
+                ],
                 [
                   "Successful call",
                   r.callerMustBeLowest
@@ -945,9 +986,7 @@ function HouseRuleEditor({ state }: { state: GameView }) {
     >
       <p className="form-note">2–8 players · 13 rounds in every match</p>
       <div className="rule-form-pair">
-        {(
-          ["turnSeconds", "peekSeconds", "maxTurns"] as const
-        ).map((key) => (
+        {(["turnSeconds", "peekSeconds", "maxTurns"] as const).map((key) => (
           <label key={key}>
             <span className="field-label">
               {

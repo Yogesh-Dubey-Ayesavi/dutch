@@ -5,7 +5,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { Check, Gavel, LogOut, Settings } from "lucide-react";
+import { Check, EyeOff, Gavel, LogOut, Settings } from "lucide-react";
 import {
   PEEK_CHOICES,
   canCallDutch,
@@ -17,7 +17,7 @@ import { EMOTES } from "../../../../packages/protocol/src/index";
 import { Avatar } from "../Avatar";
 import { Diamond } from "../Cards";
 import { SwapAnimation } from "../SwapAnimation";
-import { playSound } from "../sound";
+import { playSound, startDutchAlarm, stopDutchAlarm } from "../sound";
 import { act, emote, usePrefs, useRoom } from "../store";
 import type { ModalName } from "../ui";
 import { PlayingCard, cardName } from "./PlayingCard";
@@ -98,8 +98,37 @@ export function GameTable({
 }) {
   const room = useRoom();
   const effects = usePrefs((p) => p.effects);
-  const me = s.players.find((p) => p.id === s.you)!;
-  const opponents = s.players.filter((p) => p.id !== s.you);
+  // A peeked card (Jack power, Queen-swap peek) turns face-down again after
+  // Done or five seconds. Initial peeks keep their own Done button.
+  const [veiled, setVeiled] = useState<Set<string>>(() => new Set());
+  const revealKey = (owner: string, index: number, id: string) =>
+    `${owner}:${index}:${id}`;
+  const liveReveals =
+    s.phase === "peeking"
+      ? []
+      : s.reveals.filter(
+          (r) => !veiled.has(revealKey(r.owner, r.index, r.card.id)),
+        );
+  const liveKeys = liveReveals.map((r) =>
+    revealKey(r.owner, r.index, r.card.id),
+  );
+  const veil = (keys: string[]) => setVeiled((v) => new Set([...v, ...keys]));
+  useEffect(() => {
+    if (!liveKeys.length) return;
+    const t = setTimeout(() => veil(liveKeys), 5000);
+    return () => clearTimeout(t);
+  }, [liveKeys.join()]);
+  const masked = (p: GameView["players"][number]) =>
+    s.phase === "peeking"
+      ? p
+      : {
+          ...p,
+          hand: p.hand.map((c, i) =>
+            c && veiled.has(revealKey(p.id, i, c.id)) ? null : c,
+          ),
+        };
+  const me = masked(s.players.find((p) => p.id === s.you)!);
+  const opponents = s.players.filter((p) => p.id !== s.you).map(masked);
   const mine = s.players[s.turn]?.id === s.you;
   const powerOwner = powerOwnerId(s);
   const powerMine = powerOwner === s.you;
@@ -431,6 +460,29 @@ export function GameTable({
     const hit = (x: number, y: number) =>
       document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-drop]")
         ?.dataset.drop ?? null;
+    // Placing a card shouldn't need aim: anywhere in a generous band over the
+    // hand picks the nearest card, judged from the centre of the dragged card.
+    const nearestSlot = (card: Element) => {
+      const c = card.getBoundingClientRect();
+      const x = c.left + c.width / 2,
+        y = c.top + c.height / 2;
+      const rects = handCards(handRef.current).map((e) =>
+        e.getBoundingClientRect(),
+      );
+      if (!rects.length) return null;
+      const h = rects[0].height;
+      const top = Math.min(...rects.map((r) => r.top));
+      const left = Math.min(...rects.map((r) => r.left));
+      const right = Math.max(...rects.map((r) => r.right));
+      if (y < top - h * 0.9 || x < left - h * 0.7 || x > right + h * 0.7)
+        return null;
+      let best = 0;
+      rects.forEach((r, i) => {
+        const mid = (q: DOMRect) => Math.abs(q.left + q.width / 2 - x);
+        if (mid(r) < mid(rects[best])) best = i;
+      });
+      return `hand-${best}`;
+    };
     const mark = (name: string | null) => {
       root
         .querySelectorAll(".drop-target")
@@ -563,14 +615,11 @@ export function GameTable({
         mark(d.over);
       } else if (d.kind === "held") {
         d.el.style.transform = `translate(${dx}px, ${dy}px) rotate(${dx / 30}deg) scale(1.05)`;
-        d.over =
-          over?.startsWith("hand-") || (over === "discard" && H.tossable)
-            ? over
-            : null;
+        d.over = over === "discard" && H.tossable ? over : nearestSlot(d.el);
         mark(d.over);
       } else if (d.kind === "pile" && d.ghost) {
         d.ghost.style.transform = `translate(${dx}px, ${dy}px) rotate(${dx / 30}deg) scale(1.05)`;
-        d.over = over?.startsWith("hand-") ? over : null;
+        d.over = nearestSlot(d.ghost);
         mark(d.over);
       }
     };
@@ -873,6 +922,15 @@ export function GameTable({
     }
     caller.current = s.caller;
   }, [s.caller]);
+  // The Dutch alarm loops for the whole last lap, at the player's chosen level.
+  const alarmOn = usePrefs((p) => p.sound && p.dutchAlarm);
+  const alarmVolume = usePrefs((p) => p.alarmVolume);
+  const lastLap = !!s.caller && ["playing", "power"].includes(s.phase);
+  useEffect(() => {
+    if (alarmOn && lastLap) startDutchAlarm(alarmVolume);
+    else stopDutchAlarm();
+  }, [alarmOn, alarmVolume, lastLap]);
+  useEffect(() => stopDutchAlarm, []);
   const outOfCards = useRef(s.autoDutch);
   useEffect(() => {
     if (s.autoDutch && s.autoDutch !== outOfCards.current) {
@@ -903,7 +961,12 @@ export function GameTable({
     const planned = plan.length
       ? cards.map((c) => c.offsetLeft + c.offsetWidth / 2)
       : [];
-    const all = xs.length ? xs : planned;
+    const peeked = liveReveals
+      .filter((r) => r.owner === s.you)
+      .map((r) => cards[r.index])
+      .filter(Boolean)
+      .map((c) => c.offsetLeft + c.offsetWidth / 2);
+    const all = xs.length ? xs : planned.length ? planned : peeked;
     chips.style.left = all.length
       ? `${all.reduce((a, b) => a + b, 0) / all.length}px`
       : "50%";
@@ -1188,7 +1251,9 @@ export function GameTable({
               </div>
             </div>
           )}
-          {(selected.length > 0 || plan.length > 0) && (
+          {(selected.length > 0 ||
+            plan.length > 0 ||
+            liveReveals.length > 0) && (
             <div className="chips" ref={chipsRef}>
               {selected.length > 0 && holding && (
                 <button
@@ -1212,6 +1277,16 @@ export function GameTable({
                     <path d="M12 19V5M6 11l6-6 6 6" />
                   </svg>
                   {selected.length}
+                </button>
+              )}
+              {liveReveals.length > 0 && (
+                <button
+                  className="chip hot"
+                  aria-label="Done looking, turn the card face-down"
+                  onClick={() => veil(liveKeys)}
+                >
+                  <EyeOff size={15} />
+                  Done
                 </button>
               )}
               {plan.length > 0 && (
