@@ -10,7 +10,8 @@ export function SwapAnimation({event,enabled}:{event:SwapEvent|null;enabled:bool
  useLayoutEffect(()=>{for(const el of document.querySelectorAll<HTMLElement>('[data-player-slot]'))rects.current.set(el.dataset.playerSlot!,el.getBoundingClientRect());});
  useLayoutEffect(()=>{
   if(!event||event.version===last.current)return;last.current=event.version;
-  setCaption(event.label??(event.pairs.length?`${event.pairs.length} card swap${event.pairs.length===1?'':'s'} applied`:'Cards changed'));
+  // Blind swaps are the only change a glow alone cannot explain.
+  setCaption(event.pairs.length?`${event.pairs.length} blind swap${event.pairs.length===1?'':'s'}`:'');
   const host=overlay.current;if(!host)return;
   const reduced=!enabled||matchMedia('(prefers-reduced-motion: reduce)').matches;
   const shadows=new Map<HTMLElement,string>();const filters=new Map<HTMLElement,string>();const nodes:HTMLElement[]=[];const animations:gsap.core.Tween[]=[];
