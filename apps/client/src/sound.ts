@@ -187,15 +187,15 @@ export const playChime = () => cue("chime", 0.85);
 export const playPullUp = () => cue("pull-up", 0.9);
 
 let overspeedId: number | null = null;
-/**
- * The overspeed clacker: runs only as long as a failed caller's penalty
- * cards are landing one by one, then cuts out — never the full clip.
- */
 export function startOverspeed() {
   if (!enabled || volume === 0 || !flightSounds) return;
   let sound = sounds.get("overspeed");
   if (!sound) {
-    sound = new Howl({ src: ["/audio/overspeed.mp3"], volume: 0.8 });
+    sound = new Howl({
+      src: ["/audio/overspeed.mp3"],
+      volume: 0.8,
+      loop: true,
+    });
     sounds.set("overspeed", sound);
   }
   sound.stop();
@@ -211,6 +211,22 @@ export function stopOverspeed() {
     sound.stop(id);
     sound.volume(0.8, id);
   }, 230);
+}
+
+let overspeedStreakTimer: ReturnType<typeof setTimeout> | null = null;
+/**
+ * Call once per wrong free throw. Keeps the overspeed clacker running
+ * while the mistakes keep coming, and stops it 3 seconds after the last
+ * one — for everyone at the table, not just the player who missed.
+ */
+export function noteWrongFreeThrow() {
+  if (!enabled || volume === 0 || !flightSounds) return;
+  if (!overspeedStreakTimer) startOverspeed();
+  if (overspeedStreakTimer) clearTimeout(overspeedStreakTimer);
+  overspeedStreakTimer = setTimeout(() => {
+    overspeedStreakTimer = null;
+    stopOverspeed();
+  }, 3000);
 }
 
 /** A soft two-note chime announcing it's your turn, like a message notification. */

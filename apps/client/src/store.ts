@@ -2,7 +2,7 @@ import {create} from 'zustand';
 import {persist} from 'zustand/middleware';
 import type {Action,GameView} from '../../../packages/engine/src/index';
 import type {ActionMessage,IceSignal,ServerMessage,SeatResponse} from '../../../packages/protocol/src/index';
-import {playSound} from './sound';
+import {noteWrongFreeThrow,playSound} from './sound';
 interface Preferences {name:string;avatar:number;sound:boolean;ambience:boolean;volume:number;effects:boolean;/** Loop the Dutch alarm through the last lap. */dutchAlarm:boolean;alarmVolume:number;/** Overspeed clacker, cockpit chime, and "pull up" for penalty streaks and Dutch results. */flightSounds:boolean;set:(p:Partial<Omit<Preferences,'set'>>)=>void}
 export const usePrefs=create<Preferences>()(persist(set=>({name:'',avatar:0,sound:true,ambience:false,volume:0.65,effects:true,dutchAlarm:true,alarmVolume:0.3,flightSounds:true,set:p=>set(p)}),{name:'dutch-preferences'}));
 interface RoomStore {state:GameView|null;code:string;status:'offline'|'connecting'|'connected'|'reconnecting'|'closed';error:string;pending:string|null;reactions:Record<string,string>;set:(v:Partial<RoomStore>)=>void}
@@ -26,7 +26,7 @@ function open(code:string){if(stopped)return;clearTimeout(retry);clearInterval(h
   }else if(msg.type==='error'){
    pendingMessage=null;useRoom.getState().set({error:msg.message,pending:null});playSound('penalty');
   }else if(msg.type==='sound'){
-   if(!heard.has(msg.eventId)){heard.add(msg.eventId);if(heard.size>100)heard.delete(heard.values().next().value!);playSound(msg.name);}
+   if(!heard.has(msg.eventId)){heard.add(msg.eventId);if(heard.size>100)heard.delete(heard.values().next().value!);playSound(msg.name);if(msg.name==='penalty')noteWrongFreeThrow();}
   }else if(msg.type==='emote'){
    useRoom.getState().set({reactions:{...useRoom.getState().reactions,[msg.playerId]:msg.emoji}});
    setTimeout(()=>{const reactions={...useRoom.getState().reactions};delete reactions[msg.playerId];useRoom.getState().set({reactions});},2500);

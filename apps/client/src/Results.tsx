@@ -6,13 +6,13 @@ import {
   type GameView,
 } from "../../../packages/engine/src/index";
 import { Avatar } from "./Avatar";
-import { playChime, playPullUp, startOverspeed, stopOverspeed } from "./sound";
+import { playChime, playPullUp } from "./sound";
 import { act, usePrefs, useRoom } from "./store";
 import { PlayingCard, rankLabel } from "./table/PlayingCard";
 import "./table/table.css";
 import "./screens.css";
 
-/** How long one penalty card takes to land, visually and audibly. */
+/** How long one penalty card takes to land, visually. */
 const PENALTY_STAGGER_MS = 420;
 
 export function Results({ state: s }: { state: GameView }) {
@@ -27,21 +27,10 @@ export function Results({ state: s }: { state: GameView }) {
     seenRounds.current = s.history.length;
     const result = s.history.at(-1)!;
     if (!result.caller) return;
+    // The overspeed clacker plays live, during the free throws themselves
+    // (see store.ts); the results screen only marks how the call landed.
     const penalty = result.penaltyCards?.[result.caller] ?? 0;
-    if (penalty >= 2) {
-      // The clacker runs only while this player's penalty cards are still
-      // landing, one after another — not for the whole results reveal.
-      startOverspeed();
-      const t = setTimeout(
-        stopOverspeed,
-        penalty * PENALTY_STAGGER_MS + 200,
-      );
-      return () => {
-        clearTimeout(t);
-        stopOverspeed();
-      };
-    }
-    if (penalty === 1) playPullUp();
+    if (penalty > 0) playPullUp();
     else playChime();
   }, [s.phase, s.history.length]);
   if (s.phase === "interrupted")
