@@ -625,15 +625,24 @@ describe('free-throw reaction window',()=>{
   expect(s.players[0].hand.length).toBeGreaterThanOrEqual(before); // no card removed; a penalty card may have been added
   conservation(s);
  });
- it('clears an expired window on its own schedule, independent of the turn clock',()=>{
+ it('never bumps the version for the reaction window alone — only a real turn expiry clears it',()=>{
+  // expireTurn runs before every action the server processes; if it bumped the version just because the
+  // reaction window (far shorter than the turn clock) had quietly expired, every client's expectedVersion
+  // would look stale and their very next action — like a plain draw — would be rejected as "the table
+  // moved on", even though nothing anyone could see had actually changed. It must stay a no-op until
+  // something real (the turn deadline itself) also needs to fire.
   let s=playing(2);s=setHandRanks(s,'p0',[9,1,2,3]);
   s=drawRank(s,5);s=action(s,{type:'swap',index:0},'p0');
-  const deadline=s.reactionWindow!.deadline;
-  expect(s.deadline).toBeGreaterThan(deadline); // the turn clock outlives the much shorter reaction window
-  const expired=expireTurn(s,deadline+1);
-  expect(expired.reactionWindow).toBeNull();
-  expect(expired.phase).toBe('playing'); // the turn itself was untouched
-  conservation(expired);
+  const windowDeadline=s.reactionWindow!.deadline;
+  expect(s.deadline).toBeGreaterThan(windowDeadline); // the turn clock outlives the much shorter reaction window
+  const stillTurn=expireTurn(s,windowDeadline+1);
+  expect(stillTurn).toBe(s);
+  expect(stillTurn.reactionWindow).toEqual(s.reactionWindow);
+  // Once the turn itself genuinely times out, the stale window is tidied up as part of that real expiry.
+  const afterTurn=expireTurn(s,s.deadline!);
+  expect(afterTurn.reactionWindow).toBeNull();
+  expect(afterTurn.version).toBeGreaterThan(s.version);
+  conservation(afterTurn);
  });
  it('is published in the public game view',()=>{
   let s=playing(2);s=setHandRanks(s,'p0',[9,1,2,3]);

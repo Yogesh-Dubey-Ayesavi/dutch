@@ -209,12 +209,11 @@ export function applyAction(g:Game,actor:string,a:Action,now:number,cards?:Card[
 }
 export function expireTurn(g:Game,now:number):Game {
  if(g.pendingCall&&now>=g.pendingCall.deadline){const s=structuredClone(g);finalizeCall(s,now);s.version++;return s;}
- // The reaction window runs on its own clock, independent of whose turn it is or that turn's deadline.
+ if(g.deadline===null||now<g.deadline)return g;
+ // The reaction window runs on its own clock, independent of whose turn it is or that turn's deadline;
+ // matching already re-checks it live, so clearing it here — only when something else already bumps
+ // the version — is just tidying the broadcast state, never something clients need to resync over.
  const windowExpired=!!g.reactionWindow&&now>=g.reactionWindow.deadline;
- if(g.deadline===null||now<g.deadline){
-  if(!windowExpired)return g;
-  const s=structuredClone(g);s.reactionWindow=null;s.version++;return s;
- }
  const s=structuredClone(g);if(windowExpired)s.reactionWindow=null;
  if(s.phase==='choosing'){startPeek(s,DEFAULT_PEEK_COUNT,now);}else if(s.phase==='peeking'){s.players.forEach(p=>p.peekDone=true);s.reveals={};s.phase='playing';s.deadline=now+s.rules.turnSeconds*1000;s.message='The table is open. Let’s play.';}else if(s.phase==='power'&&s.handPower){finishHandPower(s,now,true);}else if(s.phase==='playing'||s.phase==='power'){if(s.drawn){s.discard.push(s.drawn.card);}advance(s,now);s.message='Time’s up. The turn passes.';}s.version++;return s;}
 export interface PlayerView extends Omit<Player,'hand'|'peeked'> {hand:(Card|null)[];handBacks:CardBack[];connected:boolean}
