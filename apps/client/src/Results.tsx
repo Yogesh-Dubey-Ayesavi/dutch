@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Crown, Shuffle, WifiOff } from "lucide-react";
 import {
   roundLabelFor,
@@ -5,6 +6,7 @@ import {
   type GameView,
 } from "../../../packages/engine/src/index";
 import { Avatar } from "./Avatar";
+import { playChime, playOverspeed, playPullUp } from "./sound";
 import { act, usePrefs, useRoom } from "./store";
 import { PlayingCard, rankLabel } from "./table/PlayingCard";
 import "./table/table.css";
@@ -15,6 +17,18 @@ export function Results({ state: s }: { state: GameView }) {
   const effects = usePrefs((p) => p.effects);
   const isOwner = s.hostId === s.you;
   const owner = s.players.find((p) => p.id === s.hostId);
+  const seenRounds = useRef(0);
+  useEffect(() => {
+    if (s.phase === "interrupted" || s.history.length <= seenRounds.current)
+      return;
+    seenRounds.current = s.history.length;
+    const result = s.history.at(-1)!;
+    if (!result.caller) return;
+    const penalty = result.penaltyCards?.[result.caller] ?? 0;
+    if (penalty >= 2) playOverspeed();
+    else if (penalty === 1) playPullUp();
+    else playChime();
+  }, [s.phase, s.history.length]);
   if (s.phase === "interrupted")
     return (
       <section className="screen results paused">

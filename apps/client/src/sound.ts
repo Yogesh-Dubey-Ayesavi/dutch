@@ -11,9 +11,14 @@ const cardRecordings: Partial<Record<SoundName, string>> = {
   burn: "card-contact2",
 };
 let enabled = true,
-  volume = 0.65;
+  volume = 0.65,
+  flightSounds = true;
 let ambient: Howl | undefined;
 let alarm: Howl | undefined;
+
+export function configureFlightSounds(on: boolean) {
+  flightSounds = on;
+}
 
 export function configureSound(
   sound: boolean,
@@ -164,6 +169,24 @@ export function swooshSound(duration = 0.6) {
   air.connect(band).connect(gain).connect(out);
   air.start(t);
 }
+
+/* ---------- flight-deck cues: optional, silly, toggled separately ---------- */
+
+function cue(name: string, clipVolume: number) {
+  if (!enabled || volume === 0 || !flightSounds) return;
+  let sound = sounds.get(name);
+  if (!sound) {
+    sound = new Howl({ src: [`/audio/${name}.mp3`], volume: clipVolume });
+    sounds.set(name, sound);
+  }
+  sound.play();
+}
+/** A string of penalty cards landing one after another — an overspeed clacker. */
+export const playOverspeed = () => cue("overspeed", 0.8);
+/** A pleasant cockpit chime for a Dutch call that paid off. */
+export const playChime = () => cue("chime", 0.85);
+/** The classic "pull up" warning for a Dutch call that went down in flames. */
+export const playPullUp = () => cue("pull-up", 0.9);
 
 /** A soft two-note chime announcing it's your turn, like a message notification. */
 export function turnSound() {
