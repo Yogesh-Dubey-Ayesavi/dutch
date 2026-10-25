@@ -1,7 +1,8 @@
 import {describe,it,expect} from 'vitest';
-import {addPlayer,applyAction,deck,DEFAULT_RULES,expireTurn,newGame,value,viewFor,validateRules,powerOwnerId,canCallDutch,jokerRankForRound,roundLabelFor,type Game,type Action} from './index';
+import {addPlayer,applyAction,CHOOSE_SECONDS,deck,DEFAULT_RULES,expireTurn,newGame,value,viewFor,validateRules,powerOwnerId,canCallDutch,jokerRankForRound,roundLabelFor,type Game,type Action} from './index';
 function setup(n=2,rules={}){let s=newGame('p0',rules);for(let i=0;i<n;i++){s=addPlayer(s,`p${i}`,`Player ${i}`,i);s=applyAction(s,`p${i}`,{type:'ready',ready:true},0);}return s;}
-function start(n=2,rules={}){return applyAction(setup(n,rules),'p0',{type:'start'},0,deck());}
+/** Fixture: the moderator sits in the last seat so p0 opens round 1, as the older tests assume. */
+function start(n=2,rules={}){const s=applyAction(setup(n,rules),'p0',{type:'start'},0,deck());s.moderator=s.players.at(-1)!.id;s.turn=0;return applyAction(s,s.moderator,{type:'peekCount',count:2},0);}
 function playing(n=2,rules={}){let s=start(n,rules);for(const p of s.players)s=applyAction(s,p.id,{type:'finishPeek'},1);return s;}
 function action(s:Game,a:Action,id=s.players[s.turn].id){return applyAction(s,id,a,100);}
 function drawRank(s:Game,rank:number){const index=s.deck.findIndex(c=>c.rank===rank);[s.deck[index],s.deck[s.deck.length-1]]=[s.deck[s.deck.length-1],s.deck[index]];return action(s,{type:'draw',source:'deck'});}
@@ -15,7 +16,7 @@ describe('deck and values',()=>{
  it('rejects invalid house rules',()=>{for(const r of [{rounds:0},{rounds:1},{rounds:12},{rounds:14},{turnSeconds:3},{burning:'anything'},{callPenalty:-1},{powers:'true'},{maxTurns:999}])expect(()=>validateRules(r as Partial<typeof DEFAULT_RULES>)).toThrow();});
 });
 describe('lobby and initial peek',()=>{
- it('requires the host and two players, not readiness',()=>{const s=setup();expect(()=>applyAction(s,'p1',{type:'start'},0,deck())).toThrow();s.players[1].ready=false;expect(applyAction(s,'p0',{type:'start'},0,deck()).phase).toBe('peeking');expect(()=>applyAction(setup(1),'p0',{type:'start'},0,deck())).toThrow();});
+ it('requires the host and two players, not readiness',()=>{const s=setup();expect(()=>applyAction(s,'p1',{type:'start'},0,deck())).toThrow();s.players[1].ready=false;expect(applyAction(s,'p0',{type:'start'},0,deck()).phase).toBe('choosing');expect(()=>applyAction(setup(1),'p0',{type:'start'},0,deck())).toThrow();});
  it('supports 2 through 8 players',()=>{for(let n=2;n<=8;n++){const s=start(n);expect(s.players.every(p=>p.hand.length===4)).toBe(true);conservation(s);}});
  it('rejects the ninth player and joining an active match',()=>{expect(()=>addPlayer(setup(8),'p8','Nine',0)).toThrow();expect(()=>addPlayer(start(),'p2','Late',0)).toThrow();});
  it('resets readiness after rules change',()=>{const s=applyAction(setup(),'p0',{type:'rules',rules:{turnSeconds:45}},0);expect(s.players.every(p=>!p.ready)).toBe(true);});
@@ -49,8 +50,21 @@ describe('powers and matching',()=>{
 describe('Dutch, scores, rounds, and recovery',()=>{
  it('gives every opponent exactly one final turn',()=>{let s=action(playing(4),{type:'call'});expect(s.finalTurns).toBe(3);for(let i=1;i<=3;i++){expect(s.players[s.turn].id).toBe(`p${i}`);s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});}expect(s.phase).toBe('results');expect(s.history).toHaveLength(1);conservation(s);});
  it('rejects Dutch after drawing or a second Dutch call',()=>{expect(()=>action(action(playing(),{type:'draw',source:'deck'}),{type:'call'})).toThrow();expect(()=>action(action(playing(),{type:'call'}),{type:'call'})).toThrow();});
- it('calculates penalty and score breakdowns',()=>{let s=playing();s.round=13;s=action(s,{type:'call'});s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});const result=s.history[0];for(const p of s.players){expect(result.base[p.id]).toBe(p.hand.reduce((a,c)=>a+value(c,result.jokerRank),0));expect(result.scores[p.id]).toBe(result.base[p.id]+result.penalty[p.id]);}expect(result.penalty.p0).toBe(result.base.p0<result.base.p1?0:10);expect(s.phase).toBe('finished');expect(viewFor(s,'p0').players.every(p=>p.hand.every(Boolean))).toBe(true);});
- it('plays exactly 13 rounds with two players, rotates starters, and resets on rematch',()=>{let s=playing();expect(s.rules.rounds).toBe(13);for(let n=1;n<=13;n++){expect(s.round).toBe(n);expect(s.turn).toBe((n-1)%2);s=action(s,{type:'call'});s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});expect(s.history).toHaveLength(n);conservation(s);expect(s.phase).toBe(n===13?'finished':'results');if(n<13){expect(()=>applyAction(s,'p0',{type:'rematch'},200,deck())).toThrow();s=applyAction(s,'p0',{type:'nextRound'},200,deck());for(const p of s.players)s=action(s,{type:'finishPeek'},p.id);}}expect(()=>applyAction(s,'p0',{type:'nextRound'},300,deck())).toThrow();s=applyAction(s,'p0',{type:'rematch'},300,deck());expect(s.history).toEqual([]);expect(s.round).toBe(1);expect(s.rules.rounds).toBe(13);});
+ it('calculates score breakdowns and makes a failed caller draw one card per player at or below them',()=>{
+  let s=playing(4);setHandRanks(s,'p0',[5,5,5,5]);setHandRanks(s,'p1',[1,1,2,2]);setHandRanks(s,'p2',[6,6,6,6]);setHandRanks(s,'p3',[2,2,2,2]);
+  s=action(s,{type:'call'});for(const id of ['p1','p2','p3']){s=action(s,{type:'draw',source:'deck'},id);s=action(s,{type:'discard'},id);}
+  const result=s.history[0];expect(result.base).toEqual({p0:20,p1:6,p2:24,p3:8});
+  // p1 (6) and p3 (8) are at or below the caller's 20: two extra cards, counted in the score.
+  expect(result.penaltyCards).toEqual({p0:2});expect(result.hands.p0).toHaveLength(6);
+  expect(result.penalty.p0).toBe(result.hands.p0.slice(4).reduce((a,c)=>a+value(c,result.jokerRank),0));
+  for(const p of s.players)expect(result.scores[p.id]).toBe(result.base[p.id]+result.penalty[p.id]);
+  expect(viewFor(s,'p1').players.every(p=>p.hand.every(Boolean))).toBe(true);conservation(s);
+ });
+ it('gives a successful caller no extra cards',()=>{
+  let s=playing();setHandRanks(s,'p0',[1,1,2,2]);setHandRanks(s,'p1',[9,9,9,9]);s=action(s,{type:'call'});s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});
+  expect(s.history[0].penaltyCards).toEqual({});expect(s.history[0].penalty.p0).toBe(0);expect(s.history[0].hands.p0).toHaveLength(4);
+ });
+ it('plays exactly 13 rounds with two players, rotates starters, and resets on rematch',()=>{let s=playing();expect(s.rules.rounds).toBe(13);for(let n=1;n<=13;n++){expect(s.round).toBe(n);expect(s.turn).toBe((n-1)%2);s=action(s,{type:'call'});s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});expect(s.history).toHaveLength(n);conservation(s);expect(s.phase).toBe(n===13?'finished':'results');if(n<13){expect(()=>applyAction(s,'p0',{type:'rematch'},200,deck())).toThrow();s=applyAction(s,'p0',{type:'nextRound'},200,deck());s=applyAction(s,s.moderator!,{type:'peekCount',count:2},200);for(const p of s.players)s=action(s,{type:'finishPeek'},p.id);}}expect(()=>applyAction(s,'p0',{type:'nextRound'},300,deck())).toThrow();s=applyAction(s,'p0',{type:'rematch'},300,deck());expect(s.history).toEqual([]);expect(s.round).toBe(1);expect(s.rules.rounds).toBe(13);});
  it('restores exact deterministic state from JSON snapshots',()=>{const s=handPower();const restored=JSON.parse(JSON.stringify(s));expect(action(restored,{type:'skipPower'})).toEqual(action(s,{type:'skipPower'}));});
  it('caps unattended rounds with deterministic timer transitions',()=>{let s=playing(2,{maxTurns:10});for(let i=0;i<10;i++)s=expireTurn(s,100000*(i+1));expect(s.phase).toBe('results');expect(s.history).toHaveLength(1);});
 });
@@ -172,10 +186,12 @@ describe('free throws',()=>{
 });
 
 describe('free throw during an opponent draw',()=>{
- it('discards an outstanding held card before scoring an empty-hand reaction',()=>{
+ it('lets an off-turn empty hand finish the lap, then discards the held card when scoring',()=>{
   const s=withDrawRank(5);s.deck.push(...s.players[1].hand.splice(1));const ix=s.deck.findIndex(c=>c.rank===s.discard.at(-1)!.rank);
   [s.players[1].hand[0],s.deck[ix]]=[s.deck[ix],s.players[1].hand[0]];const held=s.drawn!.card;
-  const after=action(s,{type:'burn',index:0},'p1');expect(after.phase).toBe('results');expect(after.drawn).toBeNull();expect(after.discard).toContainEqual(held);expect(after.history[0].base.p1).toBe(0);conservation(after);
+  const thrown=action(s,{type:'burn',index:0},'p1');expect(thrown.phase).toBe('playing');expect(thrown.autoDutch).toBe('p1');expect(thrown.drawn?.card).toEqual(held);
+  // p1 is the moderator, so the lap closes once p0 finishes; p1 has nothing left to play.
+  const after=action(thrown,{type:'discard'},'p0');expect(after.phase).toBe('results');expect(after.drawn).toBeNull();expect(after.discard).toContainEqual(held);expect(after.history[0].base.p1).toBe(0);expect(after.history[0].autoDutch).toBe('p1');conservation(after);
  });
 });
 
@@ -498,7 +514,7 @@ describe('descending rounds and authoritative joker scoring',()=>{
   let s=scoreByTimer(setHandRanks(playing(),'p0',[13,13,13,1]));const previous=structuredClone(s.history[0]);s=applyAction(s,'p0',{type:'nextRound'},999999,deck());expect(viewFor(s,'p0').roundLabel).toBe(12);expect(viewFor(s,'p0').jokerRank).toBe(12);expect(s.history[0]).toEqual(previous);expect(s.history[0].base.p0).toBe(1);conservation(s);
  });
  it('scores every joker rank as zero over a complete thirteen-round match',()=>{
-  let s=playing();for(let n=1;n<=13;n++){const joker=14-n;setHandRanks(s,'p0',[joker,joker,joker,joker]);s=scoreByTimer(s);expect(s.history.at(-1)!.jokerRank).toBe(joker);expect(s.history.at(-1)!.base.p0).toBe(0);expect(viewFor(s,'p0').roundLabel).toBe(joker);conservation(s);if(n<13){s=applyAction(s,'p0',{type:'nextRound'},1000000*n,deck());for(const p of s.players)s=action(s,{type:'finishPeek'},p.id);}}expect(s.phase).toBe('finished');expect(s.history).toHaveLength(13);
+  let s=playing();for(let n=1;n<=13;n++){const joker=14-n;setHandRanks(s,'p0',[joker,joker,joker,joker]);s=scoreByTimer(s);expect(s.history.at(-1)!.jokerRank).toBe(joker);expect(s.history.at(-1)!.base.p0).toBe(0);expect(viewFor(s,'p0').roundLabel).toBe(joker);conservation(s);if(n<13){s=applyAction(s,'p0',{type:'nextRound'},1000000*n,deck());s=applyAction(s,s.moderator!,{type:'peekCount',count:2},1000000*n);for(const p of s.players)s=action(s,{type:'finishPeek'},p.id);}}expect(s.phase).toBe('finished');expect(s.history).toHaveLength(13);
  });
  it('retains default rank matching even when cards share the joker’s zero point value',()=>{
   const s=playing();s.round=7;setHandRanks(s,'p0',[13,5,4,3]);const redKing=s.players[0].hand.findIndex(c=>c.rank===13);if(value(s.players[0].hand[redKing])!==0){const red=s.deck.findIndex(c=>c.rank===13&&value(c)===0);[s.players[0].hand[redKing],s.deck[red]]=[s.deck[red],s.players[0].hand[redKing]];}expect(value(s.players[0].hand[redKing],7)).toBe(0);const ix=s.deck.findIndex(c=>c.rank===7);[s.discard[0],s.deck[ix]]=[s.deck[ix],s.discard[0]];const after=action(s,{type:'burn',index:redKing,match:'discard'});expect(after.players[0].hand).toHaveLength(5);expect(after.message).toContain('Wrong');conservation(after);
@@ -506,5 +522,26 @@ describe('descending rounds and authoritative joker scoring',()=>{
  it('supports joker point-value matching without granting powers for non-face-card discards',()=>{
   const s=playing(2,{burning:'value'});s.round=2;setHandRanks(s,'p0',[12,13,5,4]);let red=s.deck.findIndex(c=>c.rank===13&&value(c)===0);if(value(s.players[0].hand[1])!==0)[s.players[0].hand[1],s.deck[red]]=[s.deck[red],s.players[0].hand[1]];red=s.deck.findIndex(c=>c.rank===13&&value(c)===0);[s.discard[0],s.deck[red]]=[s.deck[red],s.discard[0]];
   const after=action(s,{type:'burn',indices:[1,0],match:'discard'});expect(after.players[0].hand).toHaveLength(2);expect(after.handPower).toMatchObject({kind:'blindSwap',remaining:1});conservation(after);
+ });
+});
+
+describe('moderator',()=>{
+ const begin=(n=4)=>applyAction(setup(n),'p0',{type:'start'},0,deck());
+ it('starts with the host moderating and the next seat clockwise playing first',()=>{const s=begin();expect(s.phase).toBe('choosing');expect(s.moderator).toBe('p0');expect(s.turn).toBe(1);});
+ it('only lets the moderator choose 0, 1 or 2 cards',()=>{const s=begin();expect(()=>applyAction(s,'p1',{type:'peekCount',count:1},1)).toThrow();expect(()=>applyAction(s,'p0',{type:'peekCount',count:3},1)).toThrow();expect(applyAction(s,'p0',{type:'peekCount',count:1},1).peekCount).toBe(1);});
+ it('limits each player to the chosen number of peeks',()=>{let s=applyAction(begin(),'p0',{type:'peekCount',count:1},1);s=applyAction(s,'p2',{type:'initialPeek',index:0},2);expect(()=>applyAction(s,'p2',{type:'initialPeek',index:1},3)).toThrow();});
+ it('skips peeking entirely when the moderator chooses 0',()=>{const s=applyAction(begin(),'p0',{type:'peekCount',count:0},1);expect(s.phase).toBe('playing');expect(s.turn).toBe(1);expect(s.players.every(p=>p.peekDone)).toBe(true);});
+ it('falls back to 2 cards when the moderator does not choose in time',()=>{const s=expireTurn(begin(),CHOOSE_SECONDS*1000);expect(s.phase).toBe('peeking');expect(s.peekCount).toBe(2);});
+ it('passes the moderator one seat clockwise each round',()=>{let s=begin(3);const seen:string[]=[];for(let n=0;n<4;n++){seen.push(s.moderator!);expect(s.turn).toBe((s.players.findIndex(p=>p.id===s.moderator)+1)%3);s=applyAction(s,s.moderator!,{type:'peekCount',count:0},1);s=applyAction(s,s.players[s.turn].id,{type:'call'},2);while(s.phase==='playing'){const id=s.players[s.turn].id;s=applyAction(s,id,{type:'draw',source:'deck'},3);s=applyAction(s,id,{type:'discard'},3);}s=applyAction(s,'p0',{type:'nextRound'},4,deck());}expect(seen).toEqual(['p0','p1','p2','p0']);});
+});
+
+describe('automatic Dutch from an empty hand',()=>{
+ it('ends the lap with the moderator after an off-turn empty hand, skipping empty seats and closing Dutch',()=>{
+  // Four players; p3 moderates, so p0 opens. p1 throws their last card during p0's turn.
+  let s=playing(4);s=action(s,{type:'draw',source:'deck'},'p0');s.deck.push(...s.players[1].hand.splice(1));const ix=s.deck.findIndex(c=>c.rank===s.discard.at(-1)!.rank);[s.players[1].hand[0],s.deck[ix]]=[s.deck[ix],s.players[1].hand[0]];
+  s=action(s,{type:'burn',index:0,match:'discard'},'p1');expect(s.autoDutch).toBe('p1');expect(s.phase).toBe('playing');
+  s=action(s,{type:'discard'},'p0');expect(s.players[s.turn].id).toBe('p2');expect(canCallDutch(s,'p2')).toBe(false);expect(()=>action(s,{type:'call'},'p2')).toThrow();
+  s=action(s,{type:'draw',source:'deck'},'p2');s=action(s,{type:'discard'},'p2');expect(s.players[s.turn].id).toBe('p3');expect(s.phase).toBe('playing');
+  s=action(s,{type:'draw',source:'deck'},'p3');s=action(s,{type:'discard'},'p3');expect(s.phase).toBe('results');expect(s.history[0].autoDutch).toBe('p1');expect(s.history[0].base.p1).toBe(0);conservation(s);
  });
 });
