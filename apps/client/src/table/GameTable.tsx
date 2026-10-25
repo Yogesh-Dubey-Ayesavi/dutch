@@ -26,8 +26,10 @@ import {
   EASE,
   fan,
   fanTransform,
+  dealIn,
   flyFrom,
   pulse,
+  riffle,
   reducedMotion,
   shake,
 } from "./motion";
@@ -760,21 +762,43 @@ export function GameTable({
     const key = `${s.round}:${s.history.length}`;
     if (dealt.current === key) return;
     dealt.current = key;
-    if (!motionOn) return;
-    const deck = rootRef.current?.querySelector(".deck");
-    const cards = Array.from(
-      rootRef.current?.querySelectorAll<HTMLElement>(".mini, .hc") ?? [],
+    if (!motionOn) {
+      playSound("deal");
+      return;
+    }
+    const root = rootRef.current;
+    const deck = root?.querySelector<HTMLElement>(".deck");
+    if (!root || !deck) return;
+    // Deal like a person would: one card to each seat in turn, four times
+    // round, starting with whoever plays first.
+    const order = s.players.map(
+      (_, i) => s.players[(s.turn + i) % s.players.length].id,
     );
-    if (!deck) return;
-    playSound("deal");
-    cards.forEach((c, i) =>
-      flyFrom(c, deck, {
-        duration: 420,
-        delay: 120 + i * Math.min(60, 1100 / cards.length),
-        scale: 0.6,
-        rotate: i % 2 ? 12 : -12,
-      }),
+    const most = Math.max(...s.players.map((p) => p.hand.length));
+    const slots: HTMLElement[] = [];
+    for (let k = 0; k < most; k++)
+      for (const id of order) {
+        const el = root.querySelector<HTMLElement>(
+          `[data-player-slot="${id}:${k}"]`,
+        );
+        if (el) slots.push(el);
+      }
+    const shuffle = 1300;
+    const gap = Math.min(130, 2600 / Math.max(1, slots.length));
+    const animations = slots.map((el, i) =>
+      dealIn(el, deck, shuffle + i * gap),
     );
+    const timers = slots.map((_, i) =>
+      setTimeout(() => playSound("deal"), shuffle + i * gap),
+    );
+    // The shuffle sound comes from the server with the new round.
+    void riffle(deck, root, shuffle - 60);
+    return () => {
+      timers.forEach(clearTimeout);
+      animations.forEach((a) => a.finish());
+      root.querySelectorAll(".riffle-card").forEach((c) => c.remove());
+      dealt.current = null;
+    };
   }, [s.phase, s.round, s.history.length]);
   const heldId = s.drawn?.card?.id;
   useLayoutEffect(() => {

@@ -916,6 +916,14 @@ html.table-lock body {
 }
 
 /* ---------- overlays ---------- */
+.riffle-card {
+  position: fixed;
+  pointer-events: none;
+  border-radius: 9px;
+}
+.riffle-card .pc {
+  box-shadow: 0 3px 8px #0008;
+}
 .drag-ghost {
   position: fixed !important;
   z-index: 60;
