@@ -59,8 +59,7 @@ export function Lobby({
         </button>
         <button className="rules-line" onClick={() => open("rules")}>
           <Settings size={14} />
-          {state.rules.turnSeconds}s turns · {state.rules.callPenalty} pt
-          penalty · House rules
+          {state.rules.turnSeconds}s turns · House rules
         </button>
       </div>
 

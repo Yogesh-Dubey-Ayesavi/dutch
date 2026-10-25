@@ -5,8 +5,9 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { Check, LogOut, Settings } from "lucide-react";
+import { Check, Gavel, LogOut, Settings } from "lucide-react";
 import {
+  PEEK_CHOICES,
   canCallDutch,
   powerOwnerId,
   type GameView,
@@ -102,9 +103,17 @@ export function GameTable({
   const mine = s.players[s.turn]?.id === s.you;
   const powerOwner = powerOwnerId(s);
   const powerMine = powerOwner === s.you;
-  const activeId = s.phase === "power" ? powerOwner : s.players[s.turn]?.id;
+  const activeId =
+    s.phase === "power"
+      ? powerOwner
+      : s.phase === "choosing"
+        ? (s.moderator ?? null)
+        : s.players[s.turn]?.id;
   const disabled = !!room.pending || room.status !== "connected";
-  const inRound = ["peeking", "playing", "power"].includes(s.phase);
+  const inRound = ["choosing", "peeking", "playing", "power"].includes(s.phase);
+  const peekCount = s.peekCount ?? 2;
+  const moderator = s.players.find((p) => p.id === s.moderator);
+  const choosing = s.phase === "choosing" && s.moderator === s.you;
 
   const [selected, setSelected] = useState<number[]>([]);
   const [firstPick, setFirstPick] = useState<Pick | null>(null);
@@ -301,7 +310,7 @@ export function GameTable({
     if (s.phase === "peeking") {
       const ok =
         !me.peekDone &&
-        myPeeks < 2 &&
+        myPeeks < peekCount &&
         !s.reveals.some((r) => r.owner === s.you && r.index === i);
       if (ok) act({ type: "initialPeek", index: i });
       return;
@@ -714,6 +723,8 @@ export function GameTable({
         setEmotes(false);
       } else if (k === "?") setKeys((v) => !v);
       else if (disabled || !inRound) return;
+      else if (choosing && /^Digit[0-2]$/.test(event.code))
+        act({ type: "peekCount", count: Number(event.code.slice(5)) });
       else if (digit) {
         const i = Number(digit[1]) - 1;
         if (i >= n) return;
@@ -758,7 +769,8 @@ export function GameTable({
   const motionOn = effects && !reducedMotion();
   const dealt = useRef<string | null>(null);
   useLayoutEffect(() => {
-    if (s.phase !== "peeking") return;
+    // Every round opens with the moderator choosing; that is when the deal happens.
+    if (s.phase !== "choosing") return;
     const key = `${s.round}:${s.history.length}`;
     if (dealt.current === key) return;
     dealt.current = key;
@@ -861,6 +873,17 @@ export function GameTable({
     }
     caller.current = s.caller;
   }, [s.caller]);
+  const outOfCards = useRef(s.autoDutch);
+  useEffect(() => {
+    if (s.autoDutch && s.autoDutch !== outOfCards.current) {
+      const name = s.players.find((p) => p.id === s.autoDutch)?.name ?? "";
+      setStamp(`${name} is out · last lap`);
+      const t = setTimeout(() => setStamp(null), 1900);
+      outOfCards.current = s.autoDutch;
+      return () => clearTimeout(t);
+    }
+    outOfCards.current = s.autoDutch;
+  }, [s.autoDutch]);
   const message = useRef(s.message);
   useEffect(() => {
     if (s.message === message.current) return;
@@ -892,8 +915,15 @@ export function GameTable({
   let hint = "";
   let quiet = false;
   let routine = false;
-  if (s.phase === "peeking")
-    hint = me.peekDone ? "Waiting for others" : `Peek two cards`;
+  if (s.phase === "choosing") {
+    hint = choosing
+      ? "Cards to see?"
+      : `${moderator?.name ?? "Moderator"} is choosing`;
+    quiet = !choosing;
+  } else if (s.phase === "peeking")
+    hint = me.peekDone
+      ? "Waiting for others"
+      : `Peek ${["no", "one", "two"][peekCount] ?? peekCount} card${peekCount === 1 ? "" : "s"}`;
   else if (picking)
     hint =
       s.power === "blindSwap"
@@ -979,6 +1009,7 @@ export function GameTable({
             x={positions[i]?.x ?? 0}
             y={positions[i]?.y ?? 0}
             active={s.phase !== "peeking" && activeId === p.id}
+            moderator={s.moderator === p.id}
             pickable={pickOpponents && !disabled}
             picked={pickedOf(p.id)}
             onOpen={() => setTray(p.id)}
@@ -1039,6 +1070,24 @@ export function GameTable({
             )}
           </div>
         </div>
+        {choosing && (
+          <div
+            className="mod-pick"
+            role="group"
+            aria-label="How many cards everyone may see"
+          >
+            {PEEK_CHOICES.map((count) => (
+              <button
+                key={count}
+                disabled={disabled}
+                onClick={() => act({ type: "peekCount", count })}
+                aria-label={`${count} card${count === 1 ? "" : "s"}`}
+              >
+                {count}
+              </button>
+            ))}
+          </div>
+        )}
         {trayPlayer && (
           <Tray
             player={trayPlayer}
@@ -1062,6 +1111,11 @@ export function GameTable({
               name={me.name}
               active={activeId === me.id && s.phase !== "peeking"}
             />
+            {s.moderator === me.id && (
+              <span className="mod-badge" aria-label="You moderate this round">
+                <Gavel size={12} />
+              </span>
+            )}
             <span className="smile" aria-hidden="true">
               <svg viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="9" />
@@ -1098,7 +1152,10 @@ export function GameTable({
           <div className="drop-slot" ref={landingRef} />
           {me.hand.map((card, i) => {
             const peekable =
-              s.phase === "peeking" && !me.peekDone && myPeeks < 2 && !card;
+              s.phase === "peeking" &&
+              !me.peekDone &&
+              myPeeks < peekCount &&
+              !card;
             const pickable =
               picking && (s.power === "blindSwap" || s.power === "ownPeek");
             return (

@@ -353,6 +353,58 @@ html.table-lock body {
   }
 }
 
+/* The moderator's choice: three glazed tiles under the piles. */
+.mod-pick {
+  position: absolute;
+  left: 50%;
+  top: calc(52% + var(--ph) / 2 + 30px);
+  translate: -50% 0;
+  z-index: 6;
+  display: flex;
+  gap: 12px;
+  animation: d-pop 0.25s var(--d-ease);
+}
+.mod-pick button {
+  width: 60px;
+  height: 60px;
+  border-radius: 10px;
+  font-family: var(--d-display) !important;
+  font-size: 32px !important;
+  color: var(--d-cobalt) !important;
+  background:
+    var(--d-tile) center / 120%,
+    var(--d-porcelain) !important;
+  box-shadow:
+    inset 0 0 0 3px #fff,
+    inset 0 0 0 4px #c9d3ec,
+    0 6px 0 #9aa9cf,
+    0 10px 20px #0007;
+}
+.mod-pick button:nth-child(2) {
+  rotate: 2deg;
+}
+.mod-pick button:not(:disabled):hover {
+  translate: 0 -3px;
+}
+.mod-badge {
+  position: absolute;
+  left: -6px;
+  top: -6px;
+  z-index: 2;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--d-tulip-ink);
+  background: var(--d-tulip);
+  box-shadow: 0 0 0 2px var(--d-night);
+}
+.me .mod-badge {
+  left: -2px;
+  top: -2px;
+}
+
 /* ---------- seats ---------- */
 .seat {
   position: absolute;
@@ -1071,6 +1123,9 @@ html.table-lock body {
   .piles {
     top: 44%;
   }
+  .mod-pick {
+    top: calc(44% + var(--ph) / 2 + 26px);
+  }
   .dock {
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     grid-template-areas: "me hand primary";
@@ -1116,6 +1171,11 @@ html.table-lock body {
   }
   .piles {
     top: 52%;
+  }
+  .mod-pick {
+    left: calc(50% + var(--pw) + 34px);
+    top: 52%;
+    translate: 0 -50%;
   }
   .hint {
     left: auto;

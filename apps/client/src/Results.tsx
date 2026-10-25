@@ -88,10 +88,21 @@ export function Results({ state: s }: { state: GameView }) {
               {result.caller === p.id && (
                 <small className="called">Called Dutch</small>
               )}
+              {result.autoDutch === p.id && (
+                <small className="called">Out of cards</small>
+              )}
             </span>
             <span className="cards-row">
-              {result.hands[p.id]?.map((c) => (
-                <span className="result-card" key={c.id}>
+              {result.hands[p.id]?.map((c, i, hand) => (
+                <span
+                  className={`result-card ${i >= hand.length - (result.penaltyCards?.[p.id] ?? 0) ? "extra" : ""}`}
+                  key={c.id}
+                  title={
+                    i >= hand.length - (result.penaltyCards?.[p.id] ?? 0)
+                      ? "Penalty card"
+                      : undefined
+                  }
+                >
                   <PlayingCard card={c} />
                   <small>
                     {c.rank === result.jokerRank
@@ -103,8 +114,11 @@ export function Results({ state: s }: { state: GameView }) {
             </span>
             <span className="points">
               <b>{result.scores[p.id]}</b>
-              {result.penalty[p.id] > 0 && (
-                <small>+{result.penalty[p.id]}</small>
+              {(result.penaltyCards?.[p.id] ?? 0) > 0 && (
+                <small>
+                  +{result.penaltyCards![p.id]} card
+                  {result.penaltyCards![p.id] === 1 ? "" : "s"}
+                </small>
               )}
               {s.history.length > 1 && <small>Σ {total(p.id)}</small>}
             </span>
