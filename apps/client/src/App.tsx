@@ -31,7 +31,12 @@ import {
 } from "../../../packages/engine/src/index";
 import { act, connect, leave, seat, usePrefs, useRoom } from "./store";
 import {
+  configureFlightSounds,
   configureSound,
+  playChime,
+  playPullUp,
+  startOverspeed,
+  stopOverspeed,
   playSound,
   startDutchAlarm,
   stopDutchAlarm,
@@ -53,6 +58,9 @@ export default function App() {
   useEffect(() => {
     configureSound(prefs.sound, prefs.volume, prefs.ambience);
   }, [prefs.sound, prefs.volume, prefs.ambience]);
+  useEffect(() => {
+    configureFlightSounds(prefs.flightSounds);
+  }, [prefs.flightSounds]);
   useEffect(() => {
     const code = new URLSearchParams(location.search).get("room");
     const stored = sessionStorage.getItem("dutch-seat");
@@ -754,6 +762,39 @@ function SettingsContent() {
         <Volume2 size={12} />
         Preview alarm
       </button>
+      <Toggle
+        title="Flight-deck cues"
+        description="An overspeed clacker for penalty streaks, and a chime or “pull up” for how a Dutch call lands"
+        checked={p.flightSounds}
+        onChange={(v) => p.set({ flightSounds: v })}
+      />
+      <div className="sound-preview">
+        <div>
+          {(
+            [
+              [
+                "overspeed",
+                () => {
+                  startOverspeed();
+                  setTimeout(stopOverspeed, 1200);
+                },
+              ],
+              ["chime", playChime],
+              ["pull up", playPullUp],
+            ] as const
+          ).map(([label, play]) => (
+            <button
+              className="sound-chip"
+              key={label}
+              onClick={play}
+              disabled={!p.sound || !p.flightSounds}
+            >
+              <Volume2 size={12} />
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
       <Toggle
         title="Cinematic effects"
         description="Floating particles, card motion, and celebrations"

@@ -5,6 +5,8 @@ function setup(n=2,rules={}){let s=newGame('p0',rules);for(let i=0;i<n;i++){s=ad
 function start(n=2,rules={}){const s=applyAction(setup(n,rules),'p0',{type:'start'},0,deck());s.moderator=s.players.at(-1)!.id;s.turn=0;return applyAction(s,s.moderator,{type:'peekCount',count:2},0);}
 function playing(n=2,rules={}){let s=start(n,rules);for(const p of s.players)s=applyAction(s,p.id,{type:'finishPeek'},1);return s;}
 function action(s:Game,a:Action,id=s.players[s.turn].id){return applyAction(s,id,a,100);}
+/** Calls Dutch and lets its short undo window elapse, matching the pre-undo-window call semantics. */
+function dutch(s:Game,id=s.players[s.turn].id,now=100){const called=applyAction(s,id,{type:'call'},now);return expireTurn(called,called.pendingCall!.deadline);}
 function drawRank(s:Game,rank:number){const index=s.deck.findIndex(c=>c.rank===rank);[s.deck[index],s.deck[s.deck.length-1]]=[s.deck[s.deck.length-1],s.deck[index]];return action(s,{type:'draw',source:'deck'});}
 function withDrawRank(rank:number){return drawRank(playing(),rank);}
 function handPower(s=playing()){const p=s.players[s.turn];const ix=s.deck.findIndex(c=>c.rank===12);[p.hand[3],s.deck[ix]]=[s.deck[ix],p.hand[3]];s=drawRank(s,2);return action(s,{type:'swap',index:3});}
@@ -48,11 +50,11 @@ describe('powers and matching',()=>{
  it('rejects disabled free throws and allows reactions regardless of old turn-window settings',()=>{expect(()=>action(playing(2,{burning:'off'}),{type:'burn',index:0})).toThrow();expect(()=>action(playing(2,{burning:'rank',burnAnytime:false}),{type:'burn',index:0},'p1')).not.toThrow();});
 });
 describe('Dutch, scores, rounds, and recovery',()=>{
- it('gives every opponent exactly one final turn',()=>{let s=action(playing(4),{type:'call'});expect(s.finalTurns).toBe(3);for(let i=1;i<=3;i++){expect(s.players[s.turn].id).toBe(`p${i}`);s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});}expect(s.phase).toBe('results');expect(s.history).toHaveLength(1);conservation(s);});
+ it('gives every opponent exactly one final turn',()=>{let s=dutch(playing(4));expect(s.finalTurns).toBe(3);for(let i=1;i<=3;i++){expect(s.players[s.turn].id).toBe(`p${i}`);s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});}expect(s.phase).toBe('results');expect(s.history).toHaveLength(1);conservation(s);});
  it('rejects Dutch after drawing or a second Dutch call',()=>{expect(()=>action(action(playing(),{type:'draw',source:'deck'}),{type:'call'})).toThrow();expect(()=>action(action(playing(),{type:'call'}),{type:'call'})).toThrow();});
  it('calculates score breakdowns and makes a failed caller draw one card per player at or below them',()=>{
   let s=playing(4);setHandRanks(s,'p0',[5,5,5,5]);setHandRanks(s,'p1',[1,1,2,2]);setHandRanks(s,'p2',[6,6,6,6]);setHandRanks(s,'p3',[2,2,2,2]);
-  s=action(s,{type:'call'});for(const id of ['p1','p2','p3']){s=action(s,{type:'draw',source:'deck'},id);s=action(s,{type:'discard'},id);}
+  s=dutch(s);for(const id of ['p1','p2','p3']){s=action(s,{type:'draw',source:'deck'},id);s=action(s,{type:'discard'},id);}
   const result=s.history[0];expect(result.base).toEqual({p0:20,p1:6,p2:24,p3:8});
   // p1 (6) and p3 (8) are at or below the caller's 20: two extra cards, counted in the score.
   expect(result.penaltyCards).toEqual({p0:2});expect(result.hands.p0).toHaveLength(6);
@@ -61,22 +63,49 @@ describe('Dutch, scores, rounds, and recovery',()=>{
   expect(viewFor(s,'p1').players.every(p=>p.hand.every(Boolean))).toBe(true);conservation(s);
  });
  it('gives a successful caller no extra cards',()=>{
-  let s=playing();setHandRanks(s,'p0',[1,1,2,2]);setHandRanks(s,'p1',[9,9,9,9]);s=action(s,{type:'call'});s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});
+  let s=playing();setHandRanks(s,'p0',[1,1,2,2]);setHandRanks(s,'p1',[9,9,9,9]);s=dutch(s);s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});
   expect(s.history[0].penaltyCards).toEqual({});expect(s.history[0].penalty.p0).toBe(0);expect(s.history[0].hands.p0).toHaveLength(4);
  });
- it('plays exactly 13 rounds with two players, rotates starters, and resets on rematch',()=>{let s=playing();expect(s.rules.rounds).toBe(13);for(let n=1;n<=13;n++){expect(s.round).toBe(n);expect(s.turn).toBe((n-1)%2);s=action(s,{type:'call'});s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});expect(s.history).toHaveLength(n);conservation(s);expect(s.phase).toBe(n===13?'finished':'results');if(n<13){expect(()=>applyAction(s,'p0',{type:'rematch'},200,deck())).toThrow();s=applyAction(s,'p0',{type:'nextRound'},200,deck());s=applyAction(s,s.moderator!,{type:'peekCount',count:2},200);for(const p of s.players)s=action(s,{type:'finishPeek'},p.id);}}expect(()=>applyAction(s,'p0',{type:'nextRound'},300,deck())).toThrow();s=applyAction(s,'p0',{type:'rematch'},300,deck());expect(s.history).toEqual([]);expect(s.round).toBe(1);expect(s.rules.rounds).toBe(13);});
+ it('plays exactly 13 rounds with two players, rotates starters, and resets on rematch',()=>{let s=playing();expect(s.rules.rounds).toBe(13);for(let n=1;n<=13;n++){expect(s.round).toBe(n);expect(s.turn).toBe((n-1)%2);s=dutch(s);s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});expect(s.history).toHaveLength(n);conservation(s);expect(s.phase).toBe(n===13?'finished':'results');if(n<13){expect(()=>applyAction(s,'p0',{type:'rematch'},200,deck())).toThrow();s=applyAction(s,'p0',{type:'nextRound'},200,deck());s=applyAction(s,s.moderator!,{type:'peekCount',count:2},200);for(const p of s.players)s=action(s,{type:'finishPeek'},p.id);}}expect(()=>applyAction(s,'p0',{type:'nextRound'},300,deck())).toThrow();s=applyAction(s,'p0',{type:'rematch'},300,deck());expect(s.history).toEqual([]);expect(s.round).toBe(1);expect(s.rules.rounds).toBe(13);});
  it('restores exact deterministic state from JSON snapshots',()=>{const s=handPower();const restored=JSON.parse(JSON.stringify(s));expect(action(restored,{type:'skipPower'})).toEqual(action(s,{type:'skipPower'}));});
  it('caps unattended rounds with deterministic timer transitions',()=>{let s=playing(2,{maxTurns:10});for(let i=0;i<10;i++)s=expireTurn(s,100000*(i+1));expect(s.phase).toBe('results');expect(s.history).toHaveLength(1);});
+ it('holds a Dutch call for a short undo window before it locks in',()=>{
+  let s=playing();
+  s=applyAction(s,'p0',{type:'call'},100);
+  expect(s.caller).toBeNull();expect(s.pendingCall).toMatchObject({actor:'p0',onOwnTurn:true});
+  expect(()=>applyAction(s,'p1',{type:'draw',source:'deck'},150)).toThrow('wait a moment');
+  expect(()=>applyAction(s,'p1',{type:'undoCall'},150)).toThrow('There is no Dutch call to undo.');
+  const undone=applyAction(s,'p0',{type:'undoCall'},150);
+  expect(undone.pendingCall).toBeNull();expect(undone.caller).toBeNull();
+  expect(canCallDutch(undone,'p0')).toBe(true);conservation(undone);
+ });
+ it('locks a Dutch call in once its undo window has passed',()=>{
+  const s=applyAction(playing(),'p0',{type:'call'},100);
+  const finalized=expireTurn(s,s.pendingCall!.deadline);
+  expect(finalized.pendingCall).toBeNull();expect(finalized.caller).toBe('p0');
+  expect(()=>applyAction(finalized,'p0',{type:'undoCall'},finalized.deadline!)).toThrow('There is no Dutch call to undo.');
+  conservation(finalized);
+ });
+ it('deals a failed caller their penalty cards again at the start of their next round',()=>{
+  let s=playing(4);setHandRanks(s,'p0',[5,5,5,5]);setHandRanks(s,'p1',[1,1,2,2]);setHandRanks(s,'p2',[6,6,6,6]);setHandRanks(s,'p3',[2,2,2,2]);
+  s=dutch(s);for(const id of ['p1','p2','p3']){s=action(s,{type:'draw',source:'deck'},id);s=action(s,{type:'discard'},id);}
+  expect(s.carryPenalty).toEqual({playerId:'p0',count:2});
+  s=applyAction(s,'p0',{type:'nextRound'},200,deck());
+  expect(s.carryPenalty).toBeNull();
+  expect(s.players.find(p=>p.id==='p0')!.hand).toHaveLength(6);
+  for(const p of s.players)if(p.id!=='p0')expect(p.hand).toHaveLength(4);
+  conservation(s);
+ });
 });
 
 describe('Jack, Queen, and Dutch cancellation',()=>{
  it('Jack privately reveals exactly one own card and cannot blind swap',()=>{let s=jackPower();expect(s.power).toBe('ownPeek');expect(()=>action(s,{type:'powerPeek',playerId:'p1',index:0})).toThrow();expect(()=>action(s,{type:'blindSwap',firstPlayerId:'p0',firstIndex:0,secondPlayerId:'p1',secondIndex:0})).toThrow();s=action(s,{type:'powerPeek',playerId:'p0',index:2});expect(viewFor(s,'p0').reveals).toHaveLength(1);expect(viewFor(s,'p0').reveals[0].card).toEqual(s.players[0].hand[2]);expect(viewFor(s,'p1').players.flatMap(p=>p.hand).every(c=>c===null)).toBe(true);expect(s.turn).toBe(1);expect(()=>action(s,{type:'powerPeek',playerId:'p0',index:3},'p0')).toThrow();conservation(s);});
  it('Queen grants only a blind swap, never a peek',()=>{const s=handPower();expect(s.power).toBe('blindSwap');expect(()=>action(s,{type:'powerPeek',playerId:'p0',index:0})).toThrow();});
  for(const callerPosition of ['first','second','both'] as const){
-  it(`cancels Dutch when the caller supplies the ${callerPosition} swapped card, even on the last final turn`,()=>{let s=action(playing(),{type:'call'});s=handPower(s);expect(s.finalTurns).toBe(1);const first=callerPosition==='second'?'p1':'p0';const second=callerPosition==='first'?'p1':'p0';s=action(s,{type:'blindSwap',firstPlayerId:first,firstIndex:0,secondPlayerId:second,secondIndex:1});expect(s.caller).toBeNull();expect(s.finalTurns).toBe(0);expect(s.phase).toBe('playing');expect(s.history).toHaveLength(0);expect(s.message).toContain('Dutch cancelled');expect(s.turn).toBe(0);expect(viewFor(s,'p1').players.flatMap(p=>p.hand).every(c=>c===null)).toBe(true);conservation(s);s=action(s,{type:'call'});expect(s.caller).toBe('p0');expect(s.finalTurns).toBe(1);s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});expect(s.history).toHaveLength(1);expect(s.history[0].caller).toBe('p0');});
+  it(`cancels Dutch when the caller supplies the ${callerPosition} swapped card, even on the last final turn`,()=>{let s=dutch(playing());s=handPower(s);expect(s.finalTurns).toBe(1);const first=callerPosition==='second'?'p1':'p0';const second=callerPosition==='first'?'p1':'p0';s=action(s,{type:'blindSwap',firstPlayerId:first,firstIndex:0,secondPlayerId:second,secondIndex:1});expect(s.caller).toBeNull();expect(s.finalTurns).toBe(0);expect(s.phase).toBe('playing');expect(s.history).toHaveLength(0);expect(s.message).toContain('Dutch cancelled');expect(s.turn).toBe(0);expect(viewFor(s,'p1').players.flatMap(p=>p.hand).every(c=>c===null)).toBe(true);conservation(s);s=dutch(s);expect(s.caller).toBe('p0');expect(s.finalTurns).toBe(1);s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});expect(s.history).toHaveLength(1);expect(s.history[0].caller).toBe('p0');});
  }
- it('keeps Dutch active when only other players’ cards are swapped',()=>{let s=action(playing(3),{type:'call'});s=handPower(s);s=action(s,{type:'blindSwap',firstPlayerId:'p1',firstIndex:0,secondPlayerId:'p2',secondIndex:0});expect(s.caller).toBe('p0');expect(s.finalTurns).toBe(1);expect(s.phase).toBe('playing');s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});expect(s.phase).toBe('results');expect(s.history[0].caller).toBe('p0');conservation(s);});
- it('skipping the Queen power preserves Dutch and scores the last final turn',()=>{let s=action(playing(),{type:'call'});s=handPower(s);s=action(s,{type:'skipPower'});expect(s.phase).toBe('results');expect(s.history[0].caller).toBe('p0');});
+ it('keeps Dutch active when only other players’ cards are swapped',()=>{let s=dutch(playing(3));s=handPower(s);s=action(s,{type:'blindSwap',firstPlayerId:'p1',firstIndex:0,secondPlayerId:'p2',secondIndex:0});expect(s.caller).toBe('p0');expect(s.finalTurns).toBe(1);expect(s.phase).toBe('playing');s=action(s,{type:'draw',source:'deck'});s=action(s,{type:'discard'});expect(s.phase).toBe('results');expect(s.history[0].caller).toBe('p0');conservation(s);});
+ it('skipping the Queen power preserves Dutch and scores the last final turn',()=>{let s=dutch(playing());s=handPower(s);s=action(s,{type:'skipPower'});expect(s.phase).toBe('results');expect(s.history[0].caller).toBe('p0');});
 });
 
 describe('two-deck backs and public metadata',()=>{
@@ -116,7 +145,7 @@ describe('free throws',()=>{
    const deckIndex=s.deck.findIndex(c=>c.rank===rank);
    [s.players[1].hand[index],s.deck[deckIndex]]=[s.deck[deckIndex],s.players[1].hand[index]];
   }
-  s=action(s,{type:'call'});
+  s=dutch(s);
   s=drawRank(s,2);
   const held=s.drawn!.card;
   s=action(s,{type:'burn',indices:[0,1],match:'pair',targetId:held.id,handRevision:s.players[1].handRevision});
@@ -129,11 +158,15 @@ describe('free throws',()=>{
   expect(s.history[0].hands.p1.map(c=>c.rank)).toEqual([3,4]);
   conservation(s);
  });
- it('requires a held deck draw and two selected cards for a pair throw',()=>{
-  const s=playing();
-  expect(()=>action(s,{type:'burn',indices:[0,1],match:'pair'})).toThrow('Draw from the deck');
-  const drawn=drawRank(s,2);
-  expect(()=>action(drawn,{type:'burn',indices:[0],match:'pair'})).toThrow('at least two');
+ it('throws a same-rank hand set on your own turn without needing a deck draw, but not off-turn or with one card',()=>{
+  let s=playing();
+  expect(()=>action(s,{type:'burn',indices:[0],match:'pair',handRevision:s.players[0].handRevision})).toThrow('at least two');
+  expect(()=>action(s,{type:'burn',indices:[0,1],match:'pair',handRevision:s.players[1].handRevision},'p1')).toThrow('own turn');
+  s=setHandRanks(s,'p0',[6,6,3,4]);
+  const after=action(s,{type:'burn',indices:[0,1],match:'pair',handRevision:s.players[0].handRevision});
+  expect(after.players[0].hand.map(c=>c.rank)).toEqual([3,4]);
+  expect(after.drawn).toBeNull();
+  conservation(after);
  });
  it('enables same-number free throws on anyone’s turn by default',()=>{
   expect(DEFAULT_RULES.burning).toBe('rank');expect(DEFAULT_RULES.burnAnytime).toBe(true);
@@ -175,11 +208,11 @@ describe('free throws',()=>{
   const after=action(s,{type:'burn',index:0},'p1');expect(after.reveals).toEqual({});conservation(after);
  });
  it('counts a successful drawn-card free throw as the last Dutch turn',()=>{
-  let s=action(playing(),{type:'call'});s=drawRank(s,s.players[1].hand[0].rank);const after=action(s,{type:'burn',index:0});
+  let s=dutch(playing());s=drawRank(s,s.players[1].hand[0].rank);const after=action(s,{type:'burn',index:0});
   expect(after.phase).toBe('results');expect(after.history[0].caller).toBe('p0');conservation(after);
  });
  it('preserves the Dutch countdown for an out-of-turn discard free throw',()=>{
-  const s=action(playing(3),{type:'call'});const ix=s.deck.findIndex(c=>c.rank===s.discard.at(-1)!.rank);
+  const s=dutch(playing(3));const ix=s.deck.findIndex(c=>c.rank===s.discard.at(-1)!.rank);
   [s.players[2].hand[0],s.deck[ix]]=[s.deck[ix],s.players[2].hand[0]];
   const after=action(s,{type:'burn',index:0},'p2');expect(after.finalTurns).toBe(s.finalTurns);expect(after.caller).toBe('p0');expect(after.turn).toBe(1);conservation(after);
  });
@@ -271,7 +304,7 @@ describe('multiple free throws and hand Queen powers',()=>{
   const s=matchingHand(12,3);s.rules.powers=false;const after=action(drawRank(s,12),{type:'burn',indices:[0,1,2],match:'drawn'});expect(after.handPower).toBeNull();expect(after.turn).toBe(1);conservation(after);
  });
  it('cancels Dutch on the first affected swap while retaining the remaining earned swaps',()=>{
-  let s=matchingHand(12,3,3);s.turn=2;s=action(s,{type:'call'});s=drawRank(s,12);s=action(s,{type:'burn',indices:[0,1,2],match:'drawn'});
+  let s=matchingHand(12,3,3);s.turn=2;s=dutch(s);s=drawRank(s,12);s=action(s,{type:'burn',indices:[0,1,2],match:'drawn'});
   expect(s.caller).toBe('p2');s=action(s,{type:'blindSwap',firstPlayerId:'p2',firstIndex:0,secondPlayerId:'p1',secondIndex:0});expect(s.caller).toBeNull();expect(s.finalTurns).toBe(0);expect(s.handPower?.remaining).toBe(2);
   s=action(s,{type:'skipPower'});s=action(s,{type:'skipPower'});expect(s.phase).toBe('playing');expect(s.history).toHaveLength(0);conservation(s);
  });
@@ -437,7 +470,7 @@ describe('automatic matching replacements',()=>{
   const s=matchingHand(13,1);const ix=s.deck.findIndex(c=>c.rank===13&&value(c)!==value(s.players[0].hand[0]));[s.deck[ix],s.deck[s.deck.length-1]]=[s.deck[s.deck.length-1],s.deck[ix]];const drawn=action(s,{type:'draw',source:'deck'});expect(value(drawn.drawn!.card)).not.toBe(value(s.players[0].hand[0]));const after=action(drawn,{type:'swap',index:0});expect(after.players[0].hand).toHaveLength(3);expect(after.discard.slice(-2).every(c=>c.rank===13)).toBe(true);conservation(after);
  });
  it('finishes the last Dutch turn after an automatic match',()=>{
-  const s=playing();const ix=s.deck.findIndex(c=>c.rank===6);[s.players[1].hand[0],s.deck[ix]]=[s.deck[ix],s.players[1].hand[0]];let called=action(s,{type:'call'});called=drawRank(called,6);const after=action(called,{type:'swap',index:0});expect(after.phase).toBe('results');expect(after.players[1].hand).toHaveLength(3);expect(after.history[0].caller).toBe('p0');conservation(after);
+  const s=playing();const ix=s.deck.findIndex(c=>c.rank===6);[s.players[1].hand[0],s.deck[ix]]=[s.deck[ix],s.players[1].hand[0]];let called=dutch(s);called=drawRank(called,6);const after=action(called,{type:'swap',index:0});expect(after.phase).toBe('results');expect(after.players[1].hand).toHaveLength(3);expect(after.history[0].caller).toBe('p0');conservation(after);
  });
 });
 
@@ -463,11 +496,11 @@ describe('free throws immediately after exchanging a card',()=>{
 describe('Dutch after completing a turn',()=>{
  it('opens the window after a replacement and keeps the next opponent’s turn when called',()=>{
   let s=action(drawRank(matchingHand(7,1,3),9),{type:'swap',index:0});expect(s.turn).toBe(1);expect(s.dutchWindowFor).toBe('p0');expect(canCallDutch(viewFor(s,'p0'),'p0')).toBe(true);const deadline=s.deadline;
-  s=action(s,{type:'call'},'p0');expect(s.turn).toBe(1);expect(s.deadline).toBe(deadline);expect(s.caller).toBe('p0');expect(s.finalTurns).toBe(2);
+  s=dutch(s,'p0');expect(s.turn).toBe(1);expect(s.deadline).toBe(deadline);expect(s.caller).toBe('p0');expect(s.finalTurns).toBe(2);
   for(const actor of ['p1','p2']){s=action(s,{type:'draw',source:'deck'},actor);s=action(s,{type:'discard'},actor);}expect(s.phase).toBe('results');expect(s.history[0].caller).toBe('p0');conservation(s);
  });
  it('also allows Dutch after directly discarding a drawn card',()=>{
-  const s=action(withDrawRank(5),{type:'discard'});expect(s.turn).toBe(1);expect(canCallDutch(s,'p0')).toBe(true);const after=action(s,{type:'call'},'p0');expect(after.turn).toBe(1);expect(after.finalTurns).toBe(1);
+  const s=action(withDrawRank(5),{type:'discard'});expect(s.turn).toBe(1);expect(canCallDutch(s,'p0')).toBe(true);const after=dutch(s,'p0');expect(after.turn).toBe(1);expect(after.finalTurns).toBe(1);
  });
  it('closes immediately once the next player draws from either pile',()=>{
   for(const source of ['deck','discard'] as const){let s=action(withDrawRank(5),{type:'discard'});s=action(s,{type:'draw',source});expect(s.dutchWindowFor).toBeNull();expect(canCallDutch(s,'p0')).toBe(false);expect(()=>action(s,{type:'call'},'p0')).toThrow('window is closed');}
@@ -476,7 +509,7 @@ describe('Dutch after completing a turn',()=>{
   const s=action(drawRank(playing(3),5),{type:'discard'});expect(canCallDutch(s,'p2')).toBe(false);expect(()=>action(s,{type:'call'},'p2')).toThrow('just after your turn');expect(canCallDutch(s,'p1')).toBe(true);
  });
  it('opens the window after earned hand powers finish, not while they are pending',()=>{
-  let s=handPower();expect(canCallDutch(s,'p0')).toBe(false);s=action(s,{type:'skipPower'});expect(s.turn).toBe(1);expect(canCallDutch(s,'p0')).toBe(true);s=action(s,{type:'call'},'p0');expect(s.caller).toBe('p0');
+  let s=handPower();expect(canCallDutch(s,'p0')).toBe(false);s=action(s,{type:'skipPower'});expect(s.turn).toBe(1);expect(canCallDutch(s,'p0')).toBe(true);s=dutch(s,'p0');expect(s.caller).toBe('p0');
  });
  it('preserves the call window across a private snapshot restore',()=>{
   const s=action(withDrawRank(5),{type:'discard'});const restored=JSON.parse(JSON.stringify(s));expect(action(restored,{type:'call'},'p0')).toEqual(action(s,{type:'call'},'p0'));
@@ -508,7 +541,7 @@ describe('descending rounds and authoritative joker scoring',()=>{
   const s=setHandRanks(playing(),'p0',[7,7,3,5]);s.round=7;const after=scoreByTimer(s);expect(after.history[0].base.p0).toBe(8);expect(after.history[0].jokerRank).toBe(7);expect(viewFor(after,'p0').roundLabel).toBe(7);conservation(after);
  });
  it('uses joker totals when deciding whether a Dutch call succeeds',()=>{
-  let s=setHandRanks(playing(),'p0',[13,13,13,1]);s=setHandRanks(s,'p1',[2,2,2,2]);s=action(s,{type:'call'});s=expireTurn(s,s.deadline!);expect(s.history[0].base.p0).toBe(1);expect(s.history[0].base.p1).toBe(8);expect(s.history[0].penalty.p0).toBe(0);expect(s.history[0].winners).toContain('p0');conservation(s);
+  let s=setHandRanks(playing(),'p0',[13,13,13,1]);s=setHandRanks(s,'p1',[2,2,2,2]);s=dutch(s);s=expireTurn(s,s.deadline!);expect(s.history[0].base.p0).toBe(1);expect(s.history[0].base.p1).toBe(8);expect(s.history[0].penalty.p0).toBe(0);expect(s.history[0].winners).toContain('p0');conservation(s);
  });
  it('changes the joker each deal while leaving earlier scores and joker metadata intact',()=>{
   let s=scoreByTimer(setHandRanks(playing(),'p0',[13,13,13,1]));const previous=structuredClone(s.history[0]);s=applyAction(s,'p0',{type:'nextRound'},999999,deck());expect(viewFor(s,'p0').roundLabel).toBe(12);expect(viewFor(s,'p0').jokerRank).toBe(12);expect(s.history[0]).toEqual(previous);expect(s.history[0].base.p0).toBe(1);conservation(s);
@@ -532,7 +565,7 @@ describe('moderator',()=>{
  it('limits each player to the chosen number of peeks',()=>{let s=applyAction(begin(),'p0',{type:'peekCount',count:1},1);s=applyAction(s,'p2',{type:'initialPeek',index:0},2);expect(()=>applyAction(s,'p2',{type:'initialPeek',index:1},3)).toThrow();});
  it('skips peeking entirely when the moderator chooses 0',()=>{const s=applyAction(begin(),'p0',{type:'peekCount',count:0},1);expect(s.phase).toBe('playing');expect(s.turn).toBe(1);expect(s.players.every(p=>p.peekDone)).toBe(true);});
  it('falls back to 2 cards when the moderator does not choose in time',()=>{const s=expireTurn(begin(),CHOOSE_SECONDS*1000);expect(s.phase).toBe('peeking');expect(s.peekCount).toBe(2);});
- it('passes the moderator one seat clockwise each round',()=>{let s=begin(3);const seen:string[]=[];for(let n=0;n<4;n++){seen.push(s.moderator!);expect(s.turn).toBe((s.players.findIndex(p=>p.id===s.moderator)+1)%3);s=applyAction(s,s.moderator!,{type:'peekCount',count:0},1);s=applyAction(s,s.players[s.turn].id,{type:'call'},2);while(s.phase==='playing'){const id=s.players[s.turn].id;s=applyAction(s,id,{type:'draw',source:'deck'},3);s=applyAction(s,id,{type:'discard'},3);}s=applyAction(s,'p0',{type:'nextRound'},4,deck());}expect(seen).toEqual(['p0','p1','p2','p0']);});
+ it('passes the moderator one seat clockwise each round',()=>{let s=begin(3);const seen:string[]=[];for(let n=0;n<4;n++){seen.push(s.moderator!);expect(s.turn).toBe((s.players.findIndex(p=>p.id===s.moderator)+1)%3);s=applyAction(s,s.moderator!,{type:'peekCount',count:0},1);s=dutch(s,s.players[s.turn].id,2);while(s.phase==='playing'){const id=s.players[s.turn].id;s=applyAction(s,id,{type:'draw',source:'deck'},3);s=applyAction(s,id,{type:'discard'},3);}s=applyAction(s,'p0',{type:'nextRound'},4,deck());}expect(seen).toEqual(['p0','p1','p2','p0']);});
 });
 
 describe('automatic Dutch from an empty hand',()=>{

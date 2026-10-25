@@ -3,8 +3,8 @@ import {persist} from 'zustand/middleware';
 import type {Action,GameView} from '../../../packages/engine/src/index';
 import type {ActionMessage,IceSignal,ServerMessage,SeatResponse} from '../../../packages/protocol/src/index';
 import {playSound} from './sound';
-interface Preferences {name:string;avatar:number;sound:boolean;ambience:boolean;volume:number;effects:boolean;/** Loop the Dutch alarm through the last lap. */dutchAlarm:boolean;alarmVolume:number;set:(p:Partial<Omit<Preferences,'set'>>)=>void}
-export const usePrefs=create<Preferences>()(persist(set=>({name:'',avatar:0,sound:true,ambience:false,volume:0.65,effects:true,dutchAlarm:true,alarmVolume:0.3,set:p=>set(p)}),{name:'dutch-preferences'}));
+interface Preferences {name:string;avatar:number;sound:boolean;ambience:boolean;volume:number;effects:boolean;/** Loop the Dutch alarm through the last lap. */dutchAlarm:boolean;alarmVolume:number;/** Overspeed clacker, cockpit chime, and "pull up" for penalty streaks and Dutch results. */flightSounds:boolean;set:(p:Partial<Omit<Preferences,'set'>>)=>void}
+export const usePrefs=create<Preferences>()(persist(set=>({name:'',avatar:0,sound:true,ambience:false,volume:0.65,effects:true,dutchAlarm:true,alarmVolume:0.3,flightSounds:true,set:p=>set(p)}),{name:'dutch-preferences'}));
 interface RoomStore {state:GameView|null;code:string;status:'offline'|'connecting'|'connected'|'reconnecting'|'closed';error:string;pending:string|null;reactions:Record<string,string>;set:(v:Partial<RoomStore>)=>void}
 export const useRoom=create<RoomStore>(set=>({state:null,code:'',status:'offline',error:'',pending:null,reactions:{},set:v=>set(v)}));
 let seatToken='';let socket:WebSocket|null=null;let retry:ReturnType<typeof setTimeout>|undefined;let heartbeat:ReturnType<typeof setInterval>|undefined;let stopped=true;let attempt=0;let pendingMessage:ActionMessage|null=null;let lastPong=0;const heard=new Set<string>();

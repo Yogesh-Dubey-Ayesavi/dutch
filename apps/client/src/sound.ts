@@ -11,9 +11,14 @@ const cardRecordings: Partial<Record<SoundName, string>> = {
   burn: "card-contact2",
 };
 let enabled = true,
-  volume = 0.65;
+  volume = 0.65,
+  flightSounds = true;
 let ambient: Howl | undefined;
 let alarm: Howl | undefined;
+
+export function configureFlightSounds(on: boolean) {
+  flightSounds = on;
+}
 
 export function configureSound(
   sound: boolean,
@@ -163,6 +168,66 @@ export function swooshSound(duration = 0.6) {
   const gain = envelope(ctx, t, 0.35, duration * 0.45, duration * 0.5);
   air.connect(band).connect(gain).connect(out);
   air.start(t);
+}
+
+/* ---------- flight-deck cues: optional, silly, toggled separately ---------- */
+
+function cue(name: string, clipVolume: number) {
+  if (!enabled || volume === 0 || !flightSounds) return;
+  let sound = sounds.get(name);
+  if (!sound) {
+    sound = new Howl({ src: [`/audio/${name}.mp3`], volume: clipVolume });
+    sounds.set(name, sound);
+  }
+  sound.play();
+}
+/** A pleasant cockpit chime for a Dutch call that paid off. */
+export const playChime = () => cue("chime", 0.85);
+/** The classic "pull up" warning for a Dutch call that went down in flames. */
+export const playPullUp = () => cue("pull-up", 0.9);
+
+let overspeedId: number | null = null;
+/**
+ * The overspeed clacker: runs only as long as a failed caller's penalty
+ * cards are landing one by one, then cuts out — never the full clip.
+ */
+export function startOverspeed() {
+  if (!enabled || volume === 0 || !flightSounds) return;
+  let sound = sounds.get("overspeed");
+  if (!sound) {
+    sound = new Howl({ src: ["/audio/overspeed.mp3"], volume: 0.8 });
+    sounds.set("overspeed", sound);
+  }
+  sound.stop();
+  overspeedId = sound.play();
+}
+export function stopOverspeed() {
+  const sound = sounds.get("overspeed");
+  if (!sound || overspeedId === null) return;
+  const id = overspeedId;
+  overspeedId = null;
+  sound.fade(0.8, 0, 220, id);
+  setTimeout(() => {
+    sound.stop(id);
+    sound.volume(0.8, id);
+  }, 230);
+}
+
+/** A soft two-note chime announcing it's your turn, like a message notification. */
+export function turnSound() {
+  const a = audio();
+  if (!a) return;
+  const { ctx, out, t } = a;
+  [880, 1318.5].forEach((freq, i) => {
+    const at = t + i * 0.11;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    const gain = envelope(ctx, at, 0.22, 0.008, 0.22);
+    osc.connect(gain).connect(out);
+    osc.start(at);
+    osc.stop(at + 0.3);
+  });
 }
 
 /* ---------- the Dutch alarm: loops quietly through the last lap ---------- */

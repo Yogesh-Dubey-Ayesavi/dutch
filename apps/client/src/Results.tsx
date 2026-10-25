@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Crown, Shuffle, WifiOff } from "lucide-react";
 import {
   roundLabelFor,
@@ -5,16 +6,44 @@ import {
   type GameView,
 } from "../../../packages/engine/src/index";
 import { Avatar } from "./Avatar";
+import { playChime, playPullUp, startOverspeed, stopOverspeed } from "./sound";
 import { act, usePrefs, useRoom } from "./store";
 import { PlayingCard, rankLabel } from "./table/PlayingCard";
 import "./table/table.css";
 import "./screens.css";
+
+/** How long one penalty card takes to land, visually and audibly. */
+const PENALTY_STAGGER_MS = 420;
 
 export function Results({ state: s }: { state: GameView }) {
   const room = useRoom();
   const effects = usePrefs((p) => p.effects);
   const isOwner = s.hostId === s.you;
   const owner = s.players.find((p) => p.id === s.hostId);
+  const seenRounds = useRef(0);
+  useEffect(() => {
+    if (s.phase === "interrupted" || s.history.length <= seenRounds.current)
+      return;
+    seenRounds.current = s.history.length;
+    const result = s.history.at(-1)!;
+    if (!result.caller) return;
+    const penalty = result.penaltyCards?.[result.caller] ?? 0;
+    if (penalty >= 2) {
+      // The clacker runs only while this player's penalty cards are still
+      // landing, one after another — not for the whole results reveal.
+      startOverspeed();
+      const t = setTimeout(
+        stopOverspeed,
+        penalty * PENALTY_STAGGER_MS + 200,
+      );
+      return () => {
+        clearTimeout(t);
+        stopOverspeed();
+      };
+    }
+    if (penalty === 1) playPullUp();
+    else playChime();
+  }, [s.phase, s.history.length]);
   if (s.phase === "interrupted")
     return (
       <section className="screen results paused">
@@ -93,24 +122,30 @@ export function Results({ state: s }: { state: GameView }) {
               )}
             </span>
             <span className="cards-row">
-              {result.hands[p.id]?.map((c, i, hand) => (
-                <span
-                  className={`result-card ${i >= hand.length - (result.penaltyCards?.[p.id] ?? 0) ? "extra" : ""}`}
-                  key={c.id}
-                  title={
-                    i >= hand.length - (result.penaltyCards?.[p.id] ?? 0)
-                      ? "Penalty card"
-                      : undefined
-                  }
-                >
-                  <PlayingCard card={c} />
-                  <small>
-                    {c.rank === result.jokerRank
-                      ? 0
-                      : value(c, result.jokerRank)}
-                  </small>
-                </span>
-              ))}
+              {result.hands[p.id]?.map((c, i, hand) => {
+                const penaltyCount = result.penaltyCards?.[p.id] ?? 0;
+                const penaltyIndex = i - (hand.length - penaltyCount);
+                const extra = penaltyIndex >= 0;
+                return (
+                  <span
+                    className={`result-card ${extra ? "extra" : ""}`}
+                    key={c.id}
+                    title={extra ? "Penalty card" : undefined}
+                    style={
+                      extra
+                        ? { animationDelay: `${penaltyIndex * PENALTY_STAGGER_MS}ms` }
+                        : undefined
+                    }
+                  >
+                    <PlayingCard card={c} />
+                    <small>
+                      {c.rank === result.jokerRank
+                        ? 0
+                        : value(c, result.jokerRank)}
+                    </small>
+                  </span>
+                );
+              })}
             </span>
             <span className="points">
               <b>{result.scores[p.id]}</b>
@@ -119,6 +154,7 @@ export function Results({ state: s }: { state: GameView }) {
                 <small>
                   +{result.penaltyCards![p.id]} card
                   {result.penaltyCards![p.id] === 1 ? "" : "s"}
+                  {!finished && " · carries into next round"}
                 </small>
               )}
             </span>
