@@ -36,7 +36,10 @@ export class GameRoom extends DurableObject<Env>{
  }
  private connected(){return [...new Set(this.ctx.getWebSockets().map(s=>(s.deserializeAttachment() as Attachment)?.id).filter(Boolean))];}
  private persist(){if(!this.game)return;this.ctx.storage.sql.exec('INSERT OR REPLACE INTO room (id,code,state,sessions,expires) VALUES (1,?,?,?,?)',this.code,JSON.stringify({schema:SNAPSHOT_SCHEMA,game:this.game}),JSON.stringify(this.sessions),this.expires);}
- private async schedule(){const grace=Number(this.env.RECONNECT_GRACE_SECONDS||120)*1000;const dates=[this.expires,...this.sessions.filter(s=>s.disconnected!==null).map(s=>s.disconnected!+grace)];if(this.game?.deadline)dates.push(this.game.deadline);if(this.game?.pendingCall)dates.push(this.game.pendingCall.deadline);if(this.game?.reactionWindow)dates.push(this.game.reactionWindow.deadline);await this.ctx.storage.setAlarm(Math.max(Date.now()+100,Math.min(...dates)));}
+ // The reaction window is never worth an alarm of its own: expireTurn no longer bumps the version for
+ // it alone (that briefly made every other action look stale to clients, see index.test.ts), and both
+ // match validation and the client's own countdown already recheck it by comparing to the real clock.
+ private async schedule(){const grace=Number(this.env.RECONNECT_GRACE_SECONDS||120)*1000;const dates=[this.expires,...this.sessions.filter(s=>s.disconnected!==null).map(s=>s.disconnected!+grace)];if(this.game?.deadline)dates.push(this.game.deadline);if(this.game?.pendingCall)dates.push(this.game.pendingCall.deadline);await this.ctx.storage.setAlarm(Math.max(Date.now()+100,Math.min(...dates)));}
  private send(socket:WebSocket,message:ServerMessage){try{socket.send(JSON.stringify(message));}catch{/* Close callbacks update presence. */}}
  private broadcast(ack?:string,actor?:string){if(!this.game)return;const connected=this.connected();for(const socket of this.ctx.getWebSockets()){const {id}=socket.deserializeAttachment() as Attachment;this.send(socket,{v:1,type:'state',state:viewFor(this.game,id,connected),...(id===actor?{ack}:{})});}}
  private effect(name:SoundName,eventId:string){for(const socket of this.ctx.getWebSockets())this.send(socket,{v:1,type:'sound',name,eventId});}
