@@ -42,21 +42,25 @@ function Royal({rank,suit}:{rank:number;suit:Card['suit']}){
  </svg>;
 }
 
+/** Delft-tile backs: one cobalt deck and one tulip-red deck. Backs show the source deck, never the card. */
 export function CardBackArtwork({design}:{design:CardBack}){
- return <svg className={`card-back-art back-art-${design}`} viewBox="0 0 100 144" fill="none" aria-hidden="true">
-  <rect x="5" y="5" width="90" height="134" rx="3" stroke="currentColor" strokeWidth="1.3"/>
-  <rect x="8" y="8" width="84" height="128" rx="2" stroke="currentColor" strokeWidth=".55"/>
-  {[36,108].map((cy,i)=><g key={cy} transform={`translate(50 ${cy})`}>
-   {Array.from({length:12},(_,n)=><ellipse key={n} rx={design==='red'?24:21} ry="8" stroke="currentColor" strokeWidth=".5" transform={`rotate(${n*15})`}/>)}
-   <circle r="13" stroke="currentColor" strokeWidth="1"/><circle r="10" stroke="currentColor" strokeWidth=".5"/>
-   <path d={i===0?'m0-8 6 8-6 8-6-8Z':'M0-8C-9-2-9 5-2 4l-2 4h8L2 4C9 5 9-2 0-8Z'} fill="currentColor"/>
-  </g>)}
-  {[false,true].map(reverse=><g key={String(reverse)} transform={reverse?'translate(100 144) rotate(180)':undefined} stroke="currentColor" strokeWidth=".65">
-   <path d="M12 12c18 0 9 20 25 20M12 12c0 18 20 9 20 25M88 12c-18 0-9 20-25 20M88 12c0 18-20 9-20 25"/>
-   <path d="M12 12c12 2 5 11 13 13m63-13c-12 2-5 11-13 13M11 61c20-15 22 13 39 2 17 11 19-17 39-2"/>
-   <path d="m15 16 4 3-4 3-4-3Zm70 0 4 3-4 3-4-3Z" fill="currentColor"/>
-  </g>)}
-  <path d="m27 68 23-6 23 6v8l-23 6-23-6Z" fill={design==='red'?'#8f182c':'#202631'} stroke="currentColor" strokeWidth=".7"/>
-  <text x="50" y="74.5" textAnchor="middle" fill="currentColor" fontFamily="Georgia,serif" fontSize="6" letterSpacing="2">DUTCH</text>
- </svg>;
+  const uid=useId().replace(/:/g,'');
+  const red=design==='red';
+  return <svg className={`card-back-art back-art-${design}`} viewBox="0 0 100 144" aria-hidden="true">
+    <defs>
+      <linearGradient id={`glaze${uid}`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor={red?'#de4e30':'#2b52b8'}/><stop offset="1" stopColor={red?'#9c2414':'#132a6b'}/></linearGradient>
+      <pattern id={`tile${uid}`} width="23" height="23" patternUnits="userSpaceOnUse" x="4" y="3">
+        <g fill="none" stroke="#fff" strokeOpacity=".5" strokeWidth=".9">
+          <circle cx="11.5" cy="11.5" r="2.1"/>
+          <path d="M11.5 5.3c1.7 2.5 1.7 3.8 0 6.2-1.7-2.4-1.7-3.7 0-6.2ZM11.5 17.7c1.7-2.5 1.7-3.8 0-6.2-1.7 2.4-1.7 3.7 0 6.2ZM5.3 11.5c2.5-1.7 3.8-1.7 6.2 0-2.4 1.7-3.7 1.7-6.2 0ZM17.7 11.5c-2.5-1.7-3.8-1.7-6.2 0 2.4 1.7 3.7 1.7 6.2 0Z"/>
+          <path d="M0 3.7A3.7 3.7 0 0 0 3.7 0M19.3 0A3.7 3.7 0 0 0 23 3.7M23 19.3a3.7 3.7 0 0 0-3.7 3.7M3.7 23A3.7 3.7 0 0 0 0 19.3"/>
+        </g>
+      </pattern>
+    </defs>
+    <rect width="100" height="144" rx="7" fill={`url(#glaze${uid})`}/>
+    <rect x="6" y="6" width="88" height="132" rx="3" fill={`url(#tile${uid})`}/>
+    <rect x="4.5" y="4.5" width="91" height="135" rx="4" fill="none" stroke="#fff" strokeOpacity=".9" strokeWidth="2"/>
+    <rect x="7.5" y="7.5" width="85" height="129" rx="2.5" fill="none" stroke="#fff" strokeOpacity=".45" strokeWidth=".7"/>
+    <g transform="translate(50 72)"><path d="M0-17 13 0 0 17-13 0Z" fill={red?'#b3301c':'#1b3a8c'} stroke="#fff" strokeWidth="1.6"/><path d="M-4.5-6h3.8c6.4 0 6.4 12 0 12h-3.8m2.2-12v12" fill="none" stroke="#fff" strokeWidth="1.5"/></g>
+  </svg>;
 }
