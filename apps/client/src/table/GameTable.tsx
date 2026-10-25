@@ -185,6 +185,9 @@ export function GameTable({
     picking && (s.power === "blindSwap" || s.power === "otherPeek");
   const canCall = !disabled && canCallDutch(s, s.you);
   const myPeeks = s.reveals.filter((r) => r.owner === s.you).length;
+  // A hand Jack's peek never blocks the table: it just sits here, usable on your own
+  // cards whenever you like, independent of whose turn or power it currently is.
+  const jackPeeksPending = disabled ? 0 : (s.peeks ?? 0);
   const n = me.hand.length;
   const myPendingCall =
     s.pendingCall?.actor === s.you ? s.pendingCall : null;
@@ -384,6 +387,10 @@ export function GameTable({
     }
     if ((modifier || selected.length) && canSelect) return toggle(i);
     if (holding) return exchange([i]);
+    if (jackPeeksPending > 0) {
+      act({ type: "powerPeek", playerId: s.you, index: i });
+      return;
+    }
     const el = handRef.current?.querySelector(`[data-drop="hand-${i}"] .pc`);
     if (el && !reducedMotion())
       el.animate(
@@ -1048,6 +1055,8 @@ export function GameTable({
   else if (holding) {
     hint = tossable ? "Keep or discard" : "Swap it in";
     routine = true;
+  } else if (jackPeeksPending > 0) {
+    hint = `Tap a card to peek (${jackPeeksPending})`;
   } else if (mine) {
     hint = "Draw a card";
     routine = true;
@@ -1265,10 +1274,12 @@ export function GameTable({
               !card;
             const pickable =
               picking && (s.power === "blindSwap" || s.power === "ownPeek");
+            const jackPeekable =
+              jackPeeksPending > 0 && !holding && !selected.length && !picking;
             return (
               <button
                 key={i}
-                className={`hc ${selected.includes(i) || myPicked.includes(i) ? "sel" : ""} ${peekable || pickable ? "beckon" : ""}`}
+                className={`hc ${selected.includes(i) || myPicked.includes(i) ? "sel" : ""} ${peekable || pickable || jackPeekable ? "beckon" : ""}`}
                 data-src={handInteractive ? `hand-${i}` : undefined}
                 data-drop={`hand-${i}`}
                 data-player-slot={`${me.id}:${i}`}
