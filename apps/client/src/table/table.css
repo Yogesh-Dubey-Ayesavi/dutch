@@ -293,6 +293,30 @@ html.table-lock body {
     opacity: 0.55;
   }
 }
+.discard.reacting {
+  box-shadow:
+    0 0 0 2px var(--d-tulip),
+    0 0 16px 2px #ff6a2b66;
+}
+.reaction-bar {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: -7px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--d-tulip);
+  transform-origin: left center;
+  animation: reaction-drain var(--reaction-ms, 5500ms) linear forwards;
+}
+@keyframes reaction-drain {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
 .toss-badge {
   position: absolute;
   left: 50%;

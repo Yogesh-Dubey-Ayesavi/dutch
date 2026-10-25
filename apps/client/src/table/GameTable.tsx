@@ -192,6 +192,9 @@ export function GameTable({
     s.rules.burning !== "off" &&
     (!!s.discard.length || tossable);
   const canSelect = canFreeThrow || (holding && !disabled);
+  // The window keeps the discarded rank matchable for everyone, even after someone
+  // else's reaction already changed the physical top card.
+  const reactionLive = !!s.reactionWindow && Date.now() < s.reactionWindow.deadline;
   const picking = s.phase === "power" && powerMine;
   const pickOpponents =
     picking && (s.power === "blindSwap" || s.power === "otherPeek");
@@ -1219,7 +1222,7 @@ export function GameTable({
             <span className="count">{s.deckCount}</span>
           </div>
           <div
-            className={`heap discard ${canDraw && s.discard.length ? "can" : ""} ${tossable ? "toss" : ""} ${s.discard.length ? "" : "empty"}`}
+            className={`heap discard ${canDraw && s.discard.length ? "can" : ""} ${tossable ? "toss" : ""} ${s.discard.length ? "" : "empty"} ${reactionLive ? "reacting" : ""}`}
             data-src="discard"
             data-drop="discard"
             role="button"
@@ -1228,7 +1231,7 @@ export function GameTable({
               tossable
                 ? "Discard your new card"
                 : s.discard.at(-1)
-                  ? `Discard pile, ${cardName(s.discard.at(-1)!)}`
+                  ? `Discard pile, ${cardName(s.discard.at(-1)!)}${reactionLive ? ` — still matchable for a free throw` : ""}`
                   : "Empty discard pile"
             }
             aria-disabled={!(canDraw || tossable || canFreeThrow)}
@@ -1243,6 +1246,18 @@ export function GameTable({
                   <path d="M12 5v14M6 13l6 6 6-6" />
                 </svg>
               </span>
+            )}
+            {reactionLive && s.reactionWindow && (
+              <span
+                key={s.reactionWindow.deadline}
+                className="reaction-bar"
+                aria-hidden="true"
+                style={
+                  {
+                    "--reaction-ms": `${Math.max(0, s.reactionWindow.deadline - Date.now())}ms`,
+                  } as CSSProperties
+                }
+              />
             )}
             {s.discard.length > 0 && (
               <button

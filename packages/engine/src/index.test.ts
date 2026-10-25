@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {addPlayer,applyAction,CHOOSE_SECONDS,deck,DEFAULT_RULES,expireTurn,newGame,value,viewFor,validateRules,powerOwnerId,canCallDutch,jokerRankForRound,roundLabelFor,type Game,type Action} from './index';
+import {addPlayer,applyAction,CHOOSE_SECONDS,deck,DEFAULT_RULES,expireTurn,newGame,value,viewFor,validateRules,powerOwnerId,canCallDutch,jokerRankForRound,roundLabelFor,REACTION_WINDOW_MS,type Game,type Action} from './index';
 function setup(n=2,rules={}){let s=newGame('p0',rules);for(let i=0;i<n;i++){s=addPlayer(s,`p${i}`,`Player ${i}`,i);s=applyAction(s,`p${i}`,{type:'ready',ready:true},0);}return s;}
 /** Fixture: the moderator sits in the last seat so p0 opens round 1, as the older tests assume. */
 function start(n=2,rules={}){const s=applyAction(setup(n,rules),'p0',{type:'start'},0,deck());s.moderator=s.players.at(-1)!.id;s.turn=0;return applyAction(s,s.moderator,{type:'peekCount',count:2},0);}
@@ -580,5 +580,65 @@ describe('automatic Dutch from an empty hand',()=>{
   s=action(s,{type:'discard'},'p0');expect(s.players[s.turn].id).toBe('p2');expect(canCallDutch(s,'p2')).toBe(false);expect(()=>action(s,{type:'call'},'p2')).toThrow();
   s=action(s,{type:'draw',source:'deck'},'p2');s=action(s,{type:'discard'},'p2');expect(s.players[s.turn].id).toBe('p3');expect(s.phase).toBe('playing');
   s=action(s,{type:'draw',source:'deck'},'p3');s=action(s,{type:'discard'},'p3');expect(s.phase).toBe('results');expect(s.history[0].autoDutch).toBe('p1');expect(s.history[0].base.p1).toBe(0);conservation(s);
+ });
+});
+
+describe('free-throw reaction window',()=>{
+ it('opens a window naming the discarded rank when a normal swap puts a new card on the pile',()=>{
+  let s=playing(2);s=setHandRanks(s,'p0',[9,1,2,3]);
+  s=drawRank(s,5);
+  s=action(s,{type:'swap',index:0},'p0');
+  expect(s.reactionWindow).toMatchObject({rank:9,value:9});
+  expect(s.reactionWindow!.deadline).toBeGreaterThanOrEqual(100+REACTION_WINDOW_MS);
+  expect(s.discard.at(-1)!.rank).toBe(9);conservation(s);
+ });
+ it('lets a second player match the same window after a first reaction already changed the physical top, without resetting its deadline',()=>{
+  let s=playing(3);
+  s=setHandRanks(s,'p0',[9,1,2,3]);s=setHandRanks(s,'p1',[9,4,5,6]);s=setHandRanks(s,'p2',[9,7,8,10]);
+  s=drawRank(s,5);s=action(s,{type:'swap',index:0},'p0');
+  const deadline=s.reactionWindow!.deadline;
+  s=applyAction(s,'p1',{type:'burn',index:0,match:'discard'},deadline-4000);
+  expect(s.players[1].hand).toHaveLength(3);
+  expect(s.discard.at(-1)!.rank).toBe(9);
+  // The window is unchanged by p1's reaction — same rank, same deadline.
+  expect(s.reactionWindow).toMatchObject({rank:9,deadline});
+  s=applyAction(s,'p2',{type:'burn',index:0,match:'discard'},deadline-2000);
+  expect(s.players[2].hand).toHaveLength(3);
+  expect(s.reactionWindow).toMatchObject({rank:9,deadline});
+  conservation(s);
+ });
+ it('replaces the window once a genuinely different rank is discarded, closing the door on the old one',()=>{
+  let s=playing(3);
+  s=setHandRanks(s,'p0',[9,9,1,2]);s=setHandRanks(s,'p1',[9,3,4,5]);s=setHandRanks(s,'p2',[6,7,8,10]);
+  s=drawRank(s,5);s=action(s,{type:'swap',index:0},'p0');
+  expect(s.reactionWindow).toMatchObject({rank:9});
+  expect(s.players[0].hand.map(c=>c.rank)).toContain(9); // p0 kept their second 9
+  // p1's own turn: they discard an unrelated rank (3), which should take over the window.
+  s=drawRank(s,8);s=action(s,{type:'swap',index:1},'p1');
+  expect(s.reactionWindow).toMatchObject({rank:3});
+  expect(s.discard.at(-1)!.rank).toBe(3);
+  // p0's leftover 9 (now at index 1, since their own earlier swap put the drawn 5 at index 0)
+  // no longer matches anything live — it's a wrong free throw now.
+  const before=s.players[0].hand.length;
+  s=applyAction(s,'p0',{type:'burn',index:1,match:'discard'},300);
+  expect(s.message).toContain('Wrong free throw');
+  expect(s.players[0].hand.length).toBeGreaterThanOrEqual(before); // no card removed; a penalty card may have been added
+  conservation(s);
+ });
+ it('clears an expired window on its own schedule, independent of the turn clock',()=>{
+  let s=playing(2);s=setHandRanks(s,'p0',[9,1,2,3]);
+  s=drawRank(s,5);s=action(s,{type:'swap',index:0},'p0');
+  const deadline=s.reactionWindow!.deadline;
+  expect(s.deadline).toBeGreaterThan(deadline); // the turn clock outlives the much shorter reaction window
+  const expired=expireTurn(s,deadline+1);
+  expect(expired.reactionWindow).toBeNull();
+  expect(expired.phase).toBe('playing'); // the turn itself was untouched
+  conservation(expired);
+ });
+ it('is published in the public game view',()=>{
+  let s=playing(2);s=setHandRanks(s,'p0',[9,1,2,3]);
+  s=drawRank(s,5);s=action(s,{type:'swap',index:0},'p0');
+  expect(viewFor(s,'p0').reactionWindow).toMatchObject({rank:9});
+  expect(viewFor(s,'p1').reactionWindow).toMatchObject({rank:9});
  });
 });
