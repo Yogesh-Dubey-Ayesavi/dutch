@@ -20,7 +20,7 @@ export function PlayingCard({
     );
   }
   return (
-    <span className={`pc back ${className}`}>
+    <span className={`pc back ${className}`} data-back={back ?? "black"}>
       <CardBackArtwork design={back ?? "black"} />
     </span>
   );

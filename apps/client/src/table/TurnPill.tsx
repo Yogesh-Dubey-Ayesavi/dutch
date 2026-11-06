@@ -47,11 +47,13 @@ export function TurnPill({
   const active = s.players.find((p) => p.id === activeId);
   const mine = activeId === s.you;
   const moderator = s.players.find((p) => p.id === s.moderator);
+  // The active seat already shows the full name; the pill only needs to say whose move it is.
+  const first = (name?: string) => name?.trim().split(/\s+/)[0] ?? "";
   const label =
     s.phase === "choosing"
       ? s.moderator === s.you
         ? "You choose"
-        : `${moderator?.name ?? "Moderator"} chooses`
+        : `${first(moderator?.name) || "Moderator"} chooses`
       : s.phase === "peeking"
         ? "Memorize"
         : s.phase === "reaction"
@@ -59,10 +61,10 @@ export function TurnPill({
           : s.phase === "power"
           ? powerMine
             ? "Your power"
-            : `${active?.name ?? "Player"}’s power`
+            : `${first(active?.name) || "Player"}’s power`
           : mine
             ? "Your turn"
-            : (active?.name ?? "");
+            : first(active?.name);
   return (
     <div
       className={`turn-pill ${mine || s.phase === "peeking" || (s.phase === "choosing" && s.moderator === s.you) ? "mine" : ""} ${s.caller || s.autoDutch ? "final" : ""} ${seconds <= 5 && s.deadline ? "hurry" : ""}`}

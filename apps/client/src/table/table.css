@@ -1158,6 +1158,31 @@ html.table-lock body {
   border: 1.5px solid #ffffff55;
   box-shadow: 0 5px 14px #0009;
 }
+.throw-ghost.with-face {
+  background: none;
+  border: 0;
+  overflow: hidden;
+}
+.throw-ghost.with-face > .pc {
+  width: 100%;
+  height: 100%;
+}
+.card-flight {
+  position: fixed;
+  z-index: 90;
+  pointer-events: none;
+  will-change: transform;
+  transform-origin: center;
+  filter: drop-shadow(0 14px 18px #0009);
+}
+.card-flight > .pc {
+  width: 100%;
+  height: 100%;
+  box-shadow: none;
+}
+[data-flying] {
+  opacity: 0 !important;
+}
 .drag-ghost {
   position: fixed !important;
   z-index: 60;
@@ -1396,5 +1421,849 @@ html.table-lock body {
   .table *::before {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+/* ---------- header chrome: connection, chat, one overflow menu ---------- */
+.table-tools {
+  align-items: center;
+}
+.net-badge {
+  --net: var(--d-ok);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 9px 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--d-line);
+  background: #0f1b47cc;
+  color: var(--d-mist);
+  font-size: 11px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.net-badge.ok {
+  --net: #f4c04a;
+}
+.net-badge.poor,
+.net-badge.down {
+  --net: #ff5d6c;
+}
+.net-badge i {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--net);
+  box-shadow: 0 0 8px var(--net);
+}
+.net-badge.down i {
+  animation: d-net-blink 1s ease-in-out infinite;
+}
+.net-badge.down {
+  color: var(--d-porcelain);
+  border-color: #ff5d6c66;
+}
+/* A ring spins around the dot while one of your moves is being confirmed. */
+.net-badge.sending i::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1.5px solid transparent;
+  border-top-color: var(--net);
+  border-right-color: var(--net);
+  animation: d-net-spin 0.7s linear infinite;
+}
+@keyframes d-net-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes d-net-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (max-width: 420px) {
+  .net-badge span {
+    display: none;
+  }
+  .net-badge {
+    padding: 0 9px;
+  }
+  .net-badge.down span {
+    display: inline;
+  }
+}
+.table-menu {
+  position: relative;
+}
+.menu-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 50;
+  min-width: 176px;
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--d-deep);
+  border: 1px solid var(--d-line);
+  box-shadow: 0 18px 40px #000a;
+  animation: d-pop 0.18s var(--d-ease);
+}
+.menu-pop button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 40px;
+  padding: 0 10px;
+  border-radius: 9px;
+  background: none;
+  font-size: 14px !important;
+  text-align: left;
+}
+.menu-pop button:hover,
+.menu-pop button:focus-visible {
+  background: #ffffff12;
+}
+.chat-tool {
+  position: relative;
+}
+.chat-tool.on {
+  color: var(--d-porcelain) !important;
+  border-color: var(--d-tulip) !important;
+}
+.chat-tool .unread {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 800;
+  background: var(--d-tulip);
+  color: var(--d-tulip-ink);
+}
+
+/* ---------- table chat ---------- */
+.chat-panel {
+  position: absolute;
+  z-index: 45;
+  right: 12px;
+  top: calc(env(safe-area-inset-top, 0px) + 56px);
+  width: min(320px, calc(100vw - 32px));
+  max-height: min(52dvh, 420px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border-radius: 16px;
+  background: #0f1b47f2;
+  border: 1px solid var(--d-line);
+  box-shadow: 0 22px 48px #000b;
+  backdrop-filter: blur(8px);
+  animation: d-pop 0.2s var(--d-ease);
+  user-select: text;
+  -webkit-user-select: text;
+}
+.chat-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 10px 6px 14px;
+  font-size: 13px;
+}
+.chat-panel header button {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: none;
+  color: var(--d-mist);
+}
+.chat-panel ol {
+  list-style: none;
+  margin: 0;
+  padding: 2px 12px 8px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.chat-panel li {
+  align-self: flex-start;
+  max-width: 85%;
+  padding: 6px 10px;
+  border-radius: 12px 12px 12px 4px;
+  background: #ffffff10;
+  font-size: 13.5px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.chat-panel li.mine {
+  align-self: flex-end;
+  border-radius: 12px 12px 4px 12px;
+  background: #ff6a2b2e;
+}
+.chat-panel li.empty {
+  align-self: center;
+  background: none;
+  color: var(--d-dim);
+}
+.chat-panel .who {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--d-mist);
+}
+.chat-panel form {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid var(--d-line);
+}
+.chat-panel input {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--d-line);
+  background: var(--d-night);
+  color: var(--d-porcelain);
+  font: inherit;
+  font-size: 16px; /* 16px keeps iOS from zooming into the field */
+}
+.chat-panel form button {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--d-tulip);
+  color: var(--d-tulip-ink);
+}
+.chat-panel form button:disabled {
+  opacity: 0.4;
+}
+
+/* ---------- reactions & chat bubbles over seats (body-level, never clipped) ---------- */
+.burst-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  pointer-events: none;
+}
+.burst {
+  position: fixed;
+  translate: -50% -100%;
+}
+.burst.emoji {
+  font-size: 40px;
+  line-height: 1;
+  filter: drop-shadow(0 6px 10px #0008);
+  animation: d-burst 2.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+@keyframes d-burst {
+  0% {
+    transform: translateY(10px) scale(0.3);
+    opacity: 0;
+  }
+  12% {
+    transform: translateY(-14px) scale(1.25);
+    opacity: 1;
+  }
+  22% {
+    transform: translateY(-10px) scale(1);
+  }
+  80% {
+    transform: translateY(-34px) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-52px) scale(0.9);
+    opacity: 0;
+  }
+}
+.burst.said {
+  max-width: min(200px, 60vw);
+  padding: 6px 10px;
+  margin-top: -6px;
+  border-radius: 12px 12px 12px 4px;
+  background: var(--d-porcelain);
+  color: var(--d-ink);
+  font-family: var(--d-ui);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  box-shadow: 0 10px 24px #0009;
+  animation: d-said 4.2s var(--d-ease) forwards;
+}
+@keyframes d-said {
+  0% {
+    transform: translateY(8px) scale(0.8);
+    opacity: 0;
+  }
+  6%,
+  88% {
+    transform: none;
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .burst.emoji,
+  .burst.said {
+    animation-duration: 0.01s;
+    animation-fill-mode: none;
+  }
+}
+
+/* Your own free throw sits on top: visibly not yours to take. */
+.discard.own-throw .pc {
+  filter: saturate(0.6) brightness(0.8);
+}
+.discard.own-throw::after {
+  content: "your throw";
+  position: absolute;
+  left: 50%;
+  bottom: -18px;
+  translate: -50% 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--d-mist);
+  white-space: nowrap;
+}
+
+/* ---------- phone header: one calm row ---------- */
+.turn-pill {
+  overflow: hidden;
+}
+@media (max-width: 520px) {
+  .table-top {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 8px 12px;
+  }
+  .table-brand {
+    display: none;
+  }
+  .turn-pill {
+    justify-self: start;
+    max-width: 100%;
+  }
+  .table-tools {
+    gap: 8px;
+  }
+  /* The connection badge becomes a bare status dot beside the buttons. */
+  .net-badge,
+  .net-badge.down {
+    padding: 0;
+    width: 18px;
+    height: 34px;
+    justify-content: center;
+    border: 0;
+    background: none;
+  }
+  .net-badge span,
+  .net-badge.down span {
+    display: none;
+  }
+}
+
+/* ---------- a peeked card hides itself: corner button + draining edge ---------- */
+.peek-hide {
+  position: absolute;
+  top: -9px;
+  right: -9px;
+  z-index: 3;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--d-night);
+  color: var(--d-porcelain);
+  box-shadow:
+    0 0 0 2px var(--d-porcelain),
+    0 4px 10px #0009;
+  cursor: pointer;
+  animation: d-pop 0.22s var(--d-ease);
+}
+.peek-hide::before {
+  /* A bigger touch target than the visible dot. */
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+.peek-hide:hover,
+.peek-hide:focus-visible {
+  background: var(--d-tulip);
+  color: var(--d-tulip-ink);
+  outline: none;
+}
+.peek-timer {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: 6px;
+  height: 3px;
+  border-radius: 3px;
+  background: #14193c33;
+  overflow: hidden;
+  pointer-events: none;
+}
+.peek-timer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--d-tulip);
+  transform-origin: left;
+  animation: d-peek-drain 5s linear forwards;
+}
+@keyframes d-peek-drain {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* ---------- top row: two matching capsules (whose turn · table tools) ---------- */
+.table-tools {
+  height: 34px;
+  padding: 0 3px 0 4px;
+  gap: 0;
+  border-radius: 999px;
+  background: var(--d-deep);
+  border: 1px solid var(--d-line);
+}
+.table-tools .tool {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 0 !important;
+  background: transparent !important;
+}
+.table-tools .tool:hover,
+.table-tools .tool[aria-expanded="true"] {
+  background: #ffffff14 !important;
+}
+.table-tools .chat-tool.on {
+  color: var(--d-tulip) !important;
+}
+.table-tools .chat-tool .unread {
+  top: 0;
+  right: 0;
+  min-width: 15px;
+  height: 15px;
+  font-size: 9px;
+}
+.table-tools .net-badge {
+  height: 32px;
+  padding: 0 8px 0 8px;
+  border: 0;
+  background: none;
+  border-right: 1px solid var(--d-line);
+  border-radius: 0;
+  margin-right: 2px;
+}
+@media (max-width: 520px) {
+  .turn-pill .avatar {
+    display: none;
+  }
+  .turn-pill {
+    padding-left: 14px;
+  }
+  .table-tools .net-badge {
+    width: 26px;
+    height: 32px;
+    padding: 0;
+  }
+}
+
+/* ---------- ping: signal bars (more bars = lower ping) ---------- */
+.net-badge .signal {
+  width: 18px;
+  height: 14px;
+  flex: none;
+  overflow: visible;
+}
+.net-badge .signal rect {
+  fill: #ffffff2b;
+  transition: fill 0.3s;
+}
+.net-badge .signal rect.on {
+  fill: var(--net);
+}
+.net-badge.down .signal rect {
+  animation: d-net-blink 1s ease-in-out infinite;
+}
+/* While your move is confirming, the lit bars ripple instead of a spinner. */
+.net-badge.sending .signal rect.on {
+  animation: d-net-ripple 0.9s ease-in-out infinite;
+}
+@keyframes d-net-ripple {
+  50% {
+    opacity: 0.35;
+  }
+}
+.net-badge span {
+  min-width: 38px;
+}
+@media (max-width: 520px) {
+  .table-tools .net-badge {
+    width: 32px;
+  }
+}
+
+/* Phones: the chat sheet sits centred under the header with an even gutter. */
+@media (max-width: 520px) {
+  .chat-panel {
+    left: 16px;
+    right: 16px;
+    width: auto;
+    max-width: 420px;
+    margin: 0 auto;
+    top: calc(env(safe-area-inset-top, 0px) + 54px);
+  }
+}
+.chat-panel input:focus,
+.chat-panel input:focus-visible {
+  outline: none;
+  border-color: var(--d-tulip);
+  box-shadow: 0 0 0 3px #ff6a2b33;
+}
+
+/* ---------- iMessage-style tapback: pops out of the sender's avatar ---------- */
+.tapback {
+  --tb: 40px;
+  position: fixed;
+  width: var(--tb);
+  height: var(--tb);
+  translate: -18% -82%;
+  pointer-events: none;
+  transform-origin: 20% 90%;
+  animation: d-tapback 2.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+.tapback.flip {
+  translate: -82% -82%;
+  transform-origin: 80% 90%;
+}
+.tapback-bubble {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--d-porcelain);
+  box-shadow:
+    0 0 0 2px var(--d-night),
+    0 8px 18px #000a;
+  font-size: 22px;
+  line-height: 1;
+}
+/* The two trailing dots lead back to the avatar, like a thought bubble's tail. */
+.tapback-dot {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--d-porcelain);
+  box-shadow: 0 0 0 2px var(--d-night);
+}
+.tapback-dot.big {
+  width: 11px;
+  height: 11px;
+  left: 2px;
+  bottom: -3px;
+}
+.tapback-dot.small {
+  width: 6px;
+  height: 6px;
+  left: -5px;
+  bottom: -10px;
+}
+.tapback.flip .tapback-dot.big {
+  left: auto;
+  right: 2px;
+}
+.tapback.flip .tapback-dot.small {
+  left: auto;
+  right: -5px;
+}
+@keyframes d-tapback {
+  0% {
+    transform: translate(var(--fx), var(--fy)) scale(0.1);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  18% {
+    transform: translate(0, 0) scale(1.18);
+  }
+  26% {
+    transform: scale(0.94);
+  }
+  32%,
+  84% {
+    transform: none;
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--fx), var(--fy)) scale(0.1);
+    opacity: 0;
+  }
+}
+/* The emoji itself gives a little wiggle once it lands. */
+.tapback-bubble {
+  animation: d-tapback-wiggle 0.5s ease-in-out 0.55s;
+}
+@keyframes d-tapback-wiggle {
+  30% {
+    transform: rotate(-12deg) scale(1.08);
+  }
+  65% {
+    transform: rotate(9deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tapback,
+  .tapback-bubble {
+    animation: none;
+  }
+}
+
+/* Phones: chat opens as a dialog in the middle of the screen, with the table dimmed behind it. */
+@media (max-width: 520px) {
+  .chat-panel {
+    top: 50%;
+    translate: 0 -50%;
+    max-height: min(60dvh, 460px);
+  }
+  .chat-scrim {
+    display: block;
+  }
+}
+.chat-scrim {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 44;
+  background: #050a1fa6;
+  animation: d-fade 0.18s ease-out;
+}
+@keyframes d-fade {
+  from {
+    opacity: 0;
+  }
+}
+@media (max-width: 520px) {
+  .chat-scrim {
+    display: block;
+  }
+}
+
+/* ---------- incoming chat toast ---------- */
+.chat-toast {
+  position: absolute;
+  z-index: 46;
+  top: calc(env(safe-area-inset-top, 0px) + 56px);
+  left: 50%;
+  translate: -50% 0;
+  width: min(360px, calc(100vw - 32px));
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px 10px 10px;
+  border-radius: 16px;
+  background: #0f1b47f5;
+  border: 1px solid var(--d-line);
+  box-shadow: 0 16px 36px #000b;
+  backdrop-filter: blur(8px);
+  text-align: left;
+  cursor: pointer;
+  animation: d-toast-in 4.5s var(--d-ease) forwards;
+}
+.chat-toast .avatar {
+  width: 32px !important;
+  height: 32px !important;
+  flex: none;
+}
+.chat-toast-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.chat-toast-body b {
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--d-mist);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Two lines at most, then an ellipsis. */
+.chat-toast-text {
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--d-porcelain);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+@keyframes d-toast-in {
+  0% {
+    transform: translateY(-14px) scale(0.96);
+    opacity: 0;
+  }
+  6%,
+  90% {
+    transform: none;
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+}
+
+/* Desktop: chat is a full-height side panel docked to the right edge. */
+@media (min-width: 521px) {
+  .chat-panel {
+    top: calc(env(safe-area-inset-top, 0px) + 58px);
+    bottom: 12px;
+    right: 12px;
+    width: 340px;
+    max-height: none;
+    animation: d-slide-in 0.22s var(--d-ease);
+  }
+  .chat-panel ol {
+    padding-top: 6px;
+  }
+  .chat-panel li.empty {
+    margin: auto 0;
+  }
+}
+@keyframes d-slide-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
+/* ---------- chat: bottom sheet on phones, side panel on desktop ---------- */
+.sheet-grabber {
+  display: none;
+}
+.chat-panel.leaving {
+  pointer-events: none;
+  animation: d-slide-out 0.24s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+@keyframes d-slide-out {
+  to {
+    transform: translateX(28px);
+    opacity: 0;
+  }
+}
+.chat-scrim.leaving {
+  animation: d-fade-out 0.24s ease-in forwards;
+}
+@keyframes d-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@media (max-width: 520px) {
+  .chat-panel {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    translate: none;
+    width: auto;
+    max-width: none;
+    margin: 0;
+    height: min(64dvh, 520px);
+    max-height: none;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    border-radius: 22px 22px 0 0;
+    border-bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-shadow: 0 -18px 44px #000b;
+    animation: d-sheet-up 0.34s cubic-bezier(0.2, 0.9, 0.25, 1);
+  }
+  .chat-panel.leaving {
+    animation: d-sheet-down 0.24s cubic-bezier(0.4, 0, 1, 1) forwards;
+  }
+  .sheet-grabber {
+    display: block;
+    justify-self: center;
+    width: 40px;
+    height: 5px;
+    margin-top: 8px;
+    border-radius: 3px;
+    background: #ffffff38;
+  }
+  .chat-panel header {
+    padding-top: 6px;
+  }
+  .chat-panel form {
+    padding: 10px 12px 12px;
+  }
+}
+@keyframes d-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes d-sheet-down {
+  to {
+    transform: translateY(100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-panel,
+  .chat-panel.leaving,
+  .chat-scrim.leaving {
+    animation-duration: 0.01s;
+  }
+}
+
+/* New-message toast lives top-right, just under the chat button it relates to. */
+.chat-toast {
+  left: auto;
+  right: 12px;
+  translate: none;
+  width: min(340px, calc(100vw - 24px));
+  animation-name: d-toast-right;
+}
+@keyframes d-toast-right {
+  0% {
+    transform: translateX(24px) scale(0.97);
+    opacity: 0;
+  }
+  6%,
+  90% {
+    transform: none;
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(16px);
+    opacity: 0;
   }
 }

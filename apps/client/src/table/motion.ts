@@ -147,13 +147,16 @@ export function throwCards(
   toEl: Element,
   count: number,
   host: HTMLElement,
+  face?: Element | null,
 ) {
   if (reducedMotion() || count < 1) return Promise.resolve();
   const to = toEl.getBoundingClientRect();
   const n = Math.min(count, 5);
   const done = Array.from({ length: n }, (_, i) => {
     const ghost = document.createElement("div");
-    ghost.className = "throw-ghost";
+    ghost.className = face ? "throw-ghost with-face" : "throw-ghost";
+    // The thrown cards are public once they land, so the flier can wear the real face.
+    if (face) ghost.appendChild(face.cloneNode(true));
     Object.assign(ghost.style, {
       left: `${fromRect.left + fromRect.width / 2 - 17}px`,
       top: `${fromRect.top + fromRect.height / 2 - 24}px`,
@@ -177,7 +180,7 @@ export function throwCards(
             offset: 1,
           },
         ],
-        { duration: 360, delay: i * 70, easing: EASE, fill: "forwards" },
+        { duration: 420, delay: i * 70, easing: EASE, fill: "forwards" },
       )
       .finished.catch(() => undefined)
       .finally(() => ghost.remove());
@@ -210,4 +213,91 @@ export function dealIn(el: HTMLElement, deck: Element, delay: number) {
     ],
     { duration: 360, delay, easing: EASE, fill: "backwards" },
   );
+}
+
+/** Smooth arrival curve for a card leaving your fingers: fast off the hand, gentle on landing. */
+export const FLING = "cubic-bezier(.22,.9,.28,1)";
+
+/**
+ * Fly a stand-in of `source` (its current on-screen look, mid-drag transform and all) onto
+ * `target`, landing exactly on the target's footprint. The real DOM updates underneath when
+ * the server confirms; the stand-in removes itself once it lands.
+ */
+export function flyCard(
+  source: Element,
+  target: Element,
+  options: { duration?: number; spin?: number; lift?: number } = {},
+) {
+  if (reducedMotion()) return null;
+  const face = source.matches(".pc") ? source : source.querySelector(".pc");
+  if (!face) return null;
+  const from = face.getBoundingClientRect();
+  const to = target.getBoundingClientRect();
+  const ghost = document.createElement("div");
+  ghost.className = "card-flight";
+  ghost.appendChild(face.cloneNode(true));
+  Object.assign(ghost.style, {
+    left: `${to.left}px`,
+    top: `${to.top}px`,
+    width: `${to.width}px`,
+    height: `${to.height}px`,
+  });
+  document.body.appendChild(ghost);
+  const dx = from.left + from.width / 2 - (to.left + to.width / 2);
+  const dy = from.top + from.height / 2 - (to.top + to.height / 2);
+  // `from` is the axis-aligned box of a possibly-rotated card; its layout width is the true size.
+  const scale = (face as HTMLElement).offsetWidth / Math.max(1, to.width) || 1;
+  const spin = options.spin ?? (dx > 0 ? -10 : 10);
+  const lift = options.lift ?? Math.min(60, Math.hypot(dx, dy) * 0.18);
+  const anim = ghost.animate(
+    [
+      { transform: `translate(${dx}px, ${dy}px) scale(${scale}) rotate(${spin}deg)` },
+      {
+        transform: `translate(${dx * 0.42}px, ${dy * 0.42 - lift}px) scale(${(scale + 1) / 2 * 1.04}) rotate(${spin / 3}deg)`,
+        offset: 0.5,
+      },
+      { transform: "translate(0px, 0px) scale(1) rotate(0deg)" },
+    ],
+    { duration: options.duration ?? 320, easing: FLING, fill: "forwards" },
+  );
+  const done = anim.finished
+    .catch(() => undefined)
+    .then(() => requestAnimationFrame(() => ghost.remove()));
+  return { anim, done, ghost };
+}
+
+/**
+ * FLIP: given where each element used to be (`before[i]` for the element now at index i),
+ * glide them from there to their resting place. Elements with no previous rect are left alone.
+ */
+export function glideFrom(
+  els: HTMLElement[],
+  before: (DOMRect | undefined)[],
+  finalTransform: (i: number) => string,
+  options: { duration?: number; lifted?: number } = {},
+) {
+  if (reducedMotion()) return;
+  const after = els.map((el) => el.getBoundingClientRect());
+  els.forEach((el, i) => {
+    const b = before[i];
+    const a = after[i];
+    if (!b || !a) return;
+    const dx = b.left + b.width / 2 - (a.left + a.width / 2);
+    const dy = b.top + b.height / 2 - (a.top + a.height / 2);
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+    const end = finalTransform(i);
+    const lifted = i === options.lifted;
+    if (lifted) el.style.zIndex = "30";
+    const anim = el.animate(
+      [
+        { transform: `translate(${dx}px, ${dy}px) ${end}${lifted ? " scale(1.08)" : ""}` },
+        { transform: end },
+      ],
+      { duration: options.duration ?? (lifted ? 280 : 240), easing: EASE },
+    );
+    if (lifted)
+      anim.finished
+        .catch(() => undefined)
+        .then(() => (el.style.zIndex = String(i)));
+  });
 }

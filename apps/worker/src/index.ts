@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import {restoreSnapshot,SNAPSHOT_SCHEMA} from './snapshot';
 import { addPlayer, applyAction, deck, expireTurn, newGame, viewFor, type Game, type Action } from '../../../packages/engine/src/index';
-import { EMOTES, type ServerMessage, type SoundName } from '../../../packages/protocol/src/index';
+import { CHAT_HISTORY, CHAT_MAX, EMOTES, type ChatLine, type ServerMessage, type SoundName } from '../../../packages/protocol/src/index';
 interface Env {ROOMS:DurableObjectNamespace<GameRoom>;ASSETS:Fetcher;API_LIMITER:RateLimit;TURN_LIMITER:RateLimit;TURN_KEY_ID:string;TURN_KEY_API_TOKEN?:string;ROOM_TTL_HOURS:string;RECONNECT_GRACE_SECONDS:string;ALLOWED_ORIGIN?:string}
 interface Session {id:string;hash:string;disconnected:number|null}
 interface Attachment {id:string;window:number;count:number}
@@ -30,7 +30,7 @@ export default {
  }
 } satisfies ExportedHandler<Env>;
 export class GameRoom extends DurableObject<Env>{
- private game:Game|null=null;private sessions:Session[]=[];private code='';private expires=0;
+ private game:Game|null=null;private sessions:Session[]=[];/** Recent table talk, kept in memory only: it is chatter, not game state. */private chat:ChatLine[]=[];private code='';private expires=0;
  constructor(ctx:DurableObjectState,env:Env){super(ctx,env);ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS room (id INTEGER PRIMARY KEY CHECK(id=1), code TEXT NOT NULL, state TEXT NOT NULL, sessions TEXT NOT NULL, expires INTEGER NOT NULL)');ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS actions (player TEXT NOT NULL, action_id TEXT NOT NULL, version INTEGER NOT NULL, PRIMARY KEY(player,action_id))');const row=ctx.storage.sql.exec<{code:string;state:string;sessions:string;expires:number}>('SELECT * FROM room WHERE id=1').toArray()[0];if(row){this.code=row.code;const snapshot=JSON.parse(row.state);this.game=restoreSnapshot(snapshot);this.sessions=JSON.parse(row.sessions);this.expires=row.expires;if(snapshot.schema!==SNAPSHOT_SCHEMA)this.persist();}
  ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping','pong'));
  }
@@ -76,7 +76,7 @@ export class GameRoom extends DurableObject<Env>{
    if(operation==='socket'){
     if(request.headers.get('Upgrade')?.toLowerCase()!=='websocket')return json({error:'WebSocket upgrade required.'},426);
     for(const socket of this.ctx.getWebSockets()){if((socket.deserializeAttachment() as Attachment).id===session.id)socket.close(4001,'Seat opened in another tab.');}
-    const pair=new WebSocketPair();this.ctx.acceptWebSocket(pair[1]);pair[1].serializeAttachment({id:session.id,window:Date.now(),count:0} satisfies Attachment);session.disconnected=null;this.game=expireTurn(this.game,Date.now());this.persist();await this.schedule();this.broadcast();return new Response(null,{status:101,webSocket:pair[0],headers:{'Sec-WebSocket-Protocol':'dutch-v1'}});
+    const pair=new WebSocketPair();this.ctx.acceptWebSocket(pair[1]);pair[1].serializeAttachment({id:session.id,window:Date.now(),count:0} satisfies Attachment);session.disconnected=null;this.game=expireTurn(this.game,Date.now());this.persist();await this.schedule();this.broadcast();if(this.chat.length)this.send(pair[1],{v:1,type:'chatHistory',lines:this.chat});return new Response(null,{status:101,webSocket:pair[0],headers:{'Sec-WebSocket-Protocol':'dutch-v1'}});
    }
    if(operation==='leave'&&request.method==='POST'){
     for(const socket of this.ctx.getWebSockets()){if((socket.deserializeAttachment() as Attachment).id===session.id)socket.close(1000,'Left the table.');}
@@ -92,7 +92,14 @@ export class GameRoom extends DurableObject<Env>{
    const connection=socket.deserializeAttachment() as Attachment;const now=Date.now();if(now-connection.window>10000){connection.window=now;connection.count=0;}connection.count++;socket.serializeAttachment(connection);if(connection.count>40)throw new Error('Too many moves. Take a breath.');
    const msg=JSON.parse(raw);if(msg.v!==1)throw new Error('Please refresh to update the game.');if(!this.game)throw new Error('This table has closed.');
    if(msg.type==='sync'){this.send(socket,{v:1,type:'state',state:viewFor(this.game,connection.id,this.connected())});return;}
-   if(msg.type==='emote'){if(!EMOTES.includes(msg.emoji))throw new Error('Unknown reaction.');for(const peer of this.ctx.getWebSockets())this.send(peer,{v:1,type:'emote',playerId:connection.id,emoji:msg.emoji});return;}
+   if(msg.type==='emote'){if(!EMOTES.includes(msg.emoji))throw new Error('Unknown reaction.');for(const peer of this.ctx.getWebSockets())this.send(peer,{v:1,type:'emote',playerId:connection.id,emoji:msg.emoji,id:crypto.randomUUID()});return;}
+   if(msg.type==='chat'){
+    const text=typeof msg.text==='string'?msg.text.replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim():'';
+    if(!text||text.length>CHAT_MAX)throw new Error(`Keep messages to 1–${CHAT_MAX} characters.`);
+    const line:ChatLine={id:crypto.randomUUID(),playerId:connection.id,text,at:now};
+    this.chat=[...this.chat,line].slice(-CHAT_HISTORY);
+    for(const peer of this.ctx.getWebSockets())this.send(peer,{v:1,type:'chat',line});return;
+   }
    if(msg.type==='signal'){
     if(typeof msg.to!=='string'||msg.to===connection.id||!this.game.players.some(p=>p.id===msg.to))throw new Error('Choose another player at this table.');
     const signal=msg.signal;
@@ -109,16 +116,21 @@ export class GameRoom extends DurableObject<Env>{
    const duplicate=this.ctx.storage.sql.exec('SELECT version FROM actions WHERE player=? AND action_id=?',connection.id,msg.id).toArray().length>0;
    if(duplicate){this.send(socket,{v:1,type:'state',state:viewFor(this.game,connection.id,this.connected()),ack:msg.id});return;}
    const expired=expireTurn(this.game,now);if(expired!==this.game){this.game=expired;this.persist();this.broadcast();}
-   const concurrentThrow=msg.action.type==='burn'&&msg.expectedVersion<this.game.version&&msg.expectedVersion>=this.game.version-1000&&typeof msg.action.targetId==='string'&&Number.isInteger(msg.action.handRevision);
-   if(msg.expectedVersion!==this.game.version&&!concurrentThrow){this.send(socket,{v:1,type:'state',state:viewFor(this.game,connection.id,this.connected())});throw new Error('The table moved on. Please try your move again.');}
+   // Moves that only touch your own hand carry their own freshness check (hand revision, or per-player
+   // peek state), so another player's action landing first must not bounce them as "stale" — that bounce
+   // was what snapped a just-reordered hand back to its old order.
+   const recent=msg.expectedVersion<this.game.version&&msg.expectedVersion>=this.game.version-1000;
+   const concurrentThrow=msg.action.type==='burn'&&recent&&typeof msg.action.targetId==='string'&&Number.isInteger(msg.action.handRevision);
+   const privateMove=recent&&((msg.action.type==='reorder'&&Number.isInteger(msg.action.handRevision))||['initialPeek','finishPeek','powerPeek'].includes(msg.action.type));
+   if(msg.expectedVersion!==this.game.version&&!concurrentThrow&&!privateMove){this.send(socket,{v:1,type:'state',state:viewFor(this.game,connection.id,this.connected())});throw new Error('The table moved on. Please try your move again.');}
    const action=msg.action as Action;if(['start','nextRound','rematch'].includes(action.type)&&this.game.players.some(p=>!this.connected().includes(p.id)))throw new Error('Wait for everyone to connect before dealing.');const before=this.game;const next=applyAction(before,connection.id,action,now,['start','nextRound','rematch'].includes(action.type)?shuffled():undefined);
    this.ctx.storage.transactionSync(()=>{this.game=next;this.expires=now+Number(this.env.ROOM_TTL_HOURS||24)*3600000;this.persist();this.ctx.storage.sql.exec('INSERT INTO actions(player,action_id,version) VALUES (?,?,?)',connection.id,msg.id,next.version);this.ctx.storage.sql.exec('DELETE FROM actions WHERE version < ?',next.version-1000);});
    await this.schedule();this.broadcast(msg.id,connection.id);
-   let sound:SoundName='snap';if(['start','nextRound','rematch'].includes(action.type))sound='shuffle';else if(action.type==='draw')sound='draw';else if(action.type==='initialPeek'||action.type==='powerPeek'||action.type==='reorder')sound='flip';else if(action.type==='burn'){const matched=next.players.find(p=>p.id===connection.id)!.hand.length<before.players.find(p=>p.id===connection.id)!.hand.length;const finalWindow=!!before.caller&&before.finalTurns===0&&!!before.reactionWindow&&now<before.reactionWindow.deadline;sound=matched?(finalWindow?'whoop':'burn'):'penalty';}else if(['blindSwap','blindSwapBatch'].includes(action.type)||next.phase==='power')sound='power';else if(action.type==='call')sound='dutch';
+   let sound:SoundName='snap';if(['start','nextRound','rematch'].includes(action.type))sound='shuffle';else if(action.type==='draw')sound='draw';else if(action.type==='initialPeek'||action.type==='powerPeek')sound='flip';else if(action.type==='burn'){const matched=next.players.find(p=>p.id===connection.id)!.hand.length<before.players.find(p=>p.id===connection.id)!.hand.length;const finalWindow=!!before.caller&&before.finalTurns===0&&!!before.reactionWindow&&now<before.reactionWindow.deadline;sound=matched?(finalWindow?'whoop':'burn'):'penalty';}else if(['blindSwap','blindSwapBatch'].includes(action.type)||next.phase==='power')sound='power';else if(action.type==='call')sound='dutch';
    if(action.type==='swap'&&next.message.startsWith('Automatic match'))sound='burn';
    if(next.handPower&&!before.handPower&&sound!=='whoop')sound='power';
    if(['finished','results'].includes(next.phase)&&!['finished','results'].includes(before.phase))sound=next.phase==='finished'?'victory':'dutch';
-   if(!['ready','rules','finishPeek'].includes(action.type))this.effect(sound,msg.id);
+   if(!['ready','rules','finishPeek','reorder'].includes(action.type))this.effect(sound,msg.id);
   }catch(e){this.send(socket,{v:1,type:'error',message:e instanceof Error?e.message:'That move is unavailable.',actionId});}
  });}
  async webSocketClose(socket:WebSocket,code:number,reason:string){try{socket.close(code,reason);}catch{/* Already closed. */}await this.disconnect(socket);}

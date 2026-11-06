@@ -26,6 +26,7 @@ import {
 import { gsap } from "gsap";
 import {
   DEFAULT_RULES,
+  MATCH_ROUNDS,
   type GameView,
   type Rules,
 } from "../../../packages/engine/src/index";
@@ -43,9 +44,11 @@ import {
 } from "./sound";
 import { Diamond, HeroCards } from "./Cards";
 import { AvatarArt } from "./Avatar";
+import { Dropdown } from "./Dropdown";
 import { Lobby } from "./Lobby";
 import { Results } from "./Results";
 import { GameTable } from "./table/GameTable";
+import { rankLabel } from "./table/PlayingCard";
 import type { ModalName } from "./ui";
 import { useClientUpdate } from "./useClientUpdate";
 export default function App() {
@@ -602,30 +605,27 @@ function SeatForm({
         <>
           <div className="form-divider" />
           <div className="rule-form-pair">
-            <label>
+            <div>
               <span className="field-label">The evening</span>
-              <input
-                aria-label="Number of rounds"
-                value="13 rounds · 13 → 1"
-                readOnly
+              <Dropdown
+                label="Number of rounds"
+                value={rules.rounds}
+                options={ROUND_OPTIONS}
+                onChange={(rounds) => setRules({ ...rules, rounds })}
               />
-            </label>
-            <label>
+            </div>
+            <div>
               <span className="field-label">Time to think</span>
-              <select
-                aria-label="Turn duration"
+              <Dropdown
+                label="Turn duration"
                 value={rules.turnSeconds}
-                onChange={(e) =>
-                  setRules({ ...rules, turnSeconds: Number(e.target.value) })
-                }
-              >
-                {[15, 30, 45, 60, 90, 120].map((n) => (
-                  <option value={n} key={n}>
-                    {n} seconds
-                  </option>
-                ))}
-              </select>
-            </label>
+                options={[15, 30, 45, 60, 90, 120].map((n) => ({
+                  value: n,
+                  label: `${n} seconds`,
+                }))}
+                onChange={(turnSeconds) => setRules({ ...rules, turnSeconds })}
+              />
+            </div>
           </div>
           <Toggle
             checked={rules.powers}
@@ -880,7 +880,7 @@ function RulesContent({ state }: { state: GameView | null }) {
               [
                 "04",
                 "Call your shot",
-                "Declare Dutch before you draw, or just after your turn until the next player draws. Every opponent gets one final turn. After the last turn, everyone has five seconds to match the final discard with a free throw before scores appear. If the caller’s card is swapped, Dutch is cancelled. A caller who isn’t the lowest draws one extra card for every player at or below their score, and those cards count. Emptying your hand is an automatic Dutch: on your own turn the round ends at once; on someone else’s turn the round ends when the moderator finishes their turn.",
+                "Declare Dutch before you draw, or just after your turn until the next player draws. Every opponent gets one final turn. After the last turn, everyone has five seconds to match the final discard with a free throw before scores appear. If the caller’s card is swapped, Dutch is cancelled. A caller who isn’t the lowest adds no points, but is dealt one extra card next round for every player who beat them (a tie counts as a loss). Emptying your hand is an automatic Dutch: on your own turn the round ends at once; on someone else’s turn the round ends when the moderator finishes their turn.",
               ],
             ].map(([n, t, d]) => (
               <div key={n}>
@@ -894,9 +894,11 @@ function RulesContent({ state }: { state: GameView | null }) {
           </div>
           <p className="joker-rule-note">
             <Sparkles size={16} />
-            Rounds count down 13 → 1. Jokers: K, Q, J, 10, 9, 8, 7, 6, 5, 4, 3,
-            2, A. Every card of the round’s joker rank is worth 0 points,
-            regardless of suit or back. Other card values stay as shown below.
+            Rounds count down from 13. Jokers: K, Q, J, 10, 9, 8, 7, 6, 5, 4, 3,
+            2, A — Kings in the first round, Queens in the second, Jacks in the
+            third, and so on. Only the round’s joker rank is worth 0 points,
+            in every suit and from both decks. Every other card scores as shown
+            below.
           </p>
           <div className="values-grid">
             <div>
@@ -912,18 +914,18 @@ function RulesContent({ state }: { state: GameView | null }) {
               <span>11 / 12 points</span>
             </div>
             <div>
-              <b className="red-text">K ♥ ♦</b>
-              <span>0 points</span>
+              <b>K</b>
+              <span>13 points</span>
             </div>
             <div>
-              <b>K ♠ ♣</b>
-              <span>13 points</span>
+              <b>Joker rank</b>
+              <span>0 points</span>
             </div>
           </div>
           <p className="form-note">
-            Start with 2–8 players. Every match lasts 13 rounds, counting down
-            from 13 to 1. Lowest round total wins; the lowest combined score
-            wins the match.
+            Start with 2–8 players. The table owner picks a match of 1 to 13
+            rounds. Lowest round total wins; the lowest combined score wins the
+            match.
           </p>
         </div>
       ) : tab === "powers" ? (
@@ -944,7 +946,7 @@ function RulesContent({ state }: { state: GameView | null }) {
             [
               "Q",
               "A twist of fate",
-              "For each Queen discarded from your hand, blindly exchange any two different cards at the table, including your own. A drawn Queen grants no swap. Identities stay hidden.",
+              "For each Queen discarded from your hand, blindly exchange two cards from two different hands, including your own. You can’t rearrange the cards inside another player’s hand. A drawn Queen grants no swap. Identities stay hidden.",
             ],
           ].map(([rank, title, desc]) => (
             <div key={rank}>
@@ -972,7 +974,7 @@ function RulesContent({ state }: { state: GameView | null }) {
           ) : (
             <div className="house-summary">
               {[
-                ["Rounds", r.rounds],
+                ["Rounds", roundsLabel(r.rounds)],
                 ["Turn timer", `${r.turnSeconds} seconds`],
                 ["Initial peek", `${r.peekSeconds} seconds`],
                 ["Special powers", r.powers ? "On" : "Off"],
@@ -981,7 +983,12 @@ function RulesContent({ state }: { state: GameView | null }) {
                   r.burning === "off" ? "Off" : `Same ${r.burning}`,
                 ],
                 ["Free throw window", "Always — any player’s turn"],
-                ["Failed call", "One extra card per player at or below you"],
+                [
+                  "Failed call",
+                  r.callerMustBeLowest
+                    ? "No points · +1 card next round per player at or below you"
+                    : "No points · +1 card next round per player below you",
+                ],
                 [
                   "Moderator",
                   "Moves clockwise each round; picks 0, 1 or 2 cards to see",
@@ -1015,6 +1022,18 @@ function RulesContent({ state }: { state: GameView | null }) {
     </>
   );
 }
+const ROUND_CHOICES = Array.from({ length: MATCH_ROUNDS }, (_, i) => MATCH_ROUNDS - i);
+/** "13 rounds · K → A", "3 rounds · K → J": each round's joker rank, first to last. */
+function roundsLabel(n: number) {
+  const last = rankLabel(MATCH_ROUNDS + 1 - n);
+  return n === 1 ? "1 round · Kings are 0" : `${n} rounds · K → ${last}`;
+}
+/** Each choice names the joker ranks it runs through, first round to last. */
+const ROUND_OPTIONS = ROUND_CHOICES.map((n) => ({
+  value: n,
+  label: n === 1 ? "1 round" : `${n} rounds`,
+  hint: n === 1 ? "Kings are 0" : `K → ${rankLabel(MATCH_ROUNDS + 1 - n)}`,
+}));
 function HouseRuleEditor({ state }: { state: GameView }) {
   const [r, setR] = useState(state.rules);
   const pending = useRoom((s) => s.pending);
@@ -1025,8 +1044,17 @@ function HouseRuleEditor({ state }: { state: GameView }) {
         act({ type: "rules", rules: r });
       }}
     >
-      <p className="form-note">2–8 players · 13 rounds in every match</p>
+      <p className="form-note">2–8 players</p>
       <div className="rule-form-pair">
+        <div>
+          <span className="field-label">Rounds</span>
+          <Dropdown
+            label="Number of rounds"
+            value={r.rounds}
+            options={ROUND_OPTIONS}
+            onChange={(rounds) => setR({ ...r, rounds })}
+          />
+        </div>
         {(["turnSeconds", "peekSeconds", "maxTurns"] as const).map((key) => (
           <label key={key}>
             <span className="field-label">
@@ -1063,20 +1091,19 @@ function HouseRuleEditor({ state }: { state: GameView }) {
             />
           </label>
         ))}
-        <label>
+        <div>
           <span className="field-label">Free throw matching</span>
-          <select
-            aria-label="Matching rule"
+          <Dropdown<Rules["burning"]>
+            label="Matching rule"
             value={r.burning}
-            onChange={(e) =>
-              setR({ ...r, burning: e.target.value as Rules["burning"] })
-            }
-          >
-            <option value="off">Off</option>
-            <option value="rank">Match rank</option>
-            <option value="value">Match point value</option>
-          </select>
-        </label>
+            options={[
+              { value: "off", label: "Off" },
+              { value: "rank", label: "Match rank" },
+              { value: "value", label: "Match point value" },
+            ]}
+            onChange={(burning) => setR({ ...r, burning })}
+          />
+        </div>
       </div>
       <Toggle
         title="Special powers"

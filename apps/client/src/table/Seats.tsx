@@ -2,7 +2,6 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { Gavel } from "lucide-react";
 import type { Card, GameView } from "../../../../packages/engine/src/index";
 import { Avatar } from "../Avatar";
-import { useRoom } from "../store";
 import { PlayingCard, cardName, rankLabel } from "./PlayingCard";
 import { EASE, fan, reducedMotion, shake } from "./motion";
 
@@ -13,7 +12,8 @@ export function seatPositions(count: number, w: number, h: number) {
   const portrait = h > w * 1.05;
   const cy = h * (portrait ? 0.5 : 0.54);
   const rx = w / 2 - (portrait ? 40 : 64);
-  const ry = cy - 34;
+  // Leave clear air under the header for the top seat's avatar and moderator badge.
+  const ry = cy - (portrait ? 52 : 40);
   const from = portrait ? 198 : 190;
   const span = portrait ? 144 : 160;
   return Array.from({ length: count }, (_, i) => {
@@ -44,7 +44,6 @@ export function Seat({
   picked: number[];
   onOpen: () => void;
 }) {
-  const reaction = useRoom((r) => r.reactions[p.id]);
   const ref = useRef<HTMLDivElement>(null);
   const count = useRef(p.hand.length);
   const holding = !!s.drawn && s.players[s.turn]?.id === p.id;
@@ -130,7 +129,6 @@ export function Seat({
           </span>
         )}
       </span>
-      {reaction && <span className="emote-bubble">{reaction}</span>}
     </Tag>
   );
 }

@@ -59,6 +59,7 @@ export function Lobby({
         </button>
         <button className="rules-line" onClick={() => open("rules")}>
           <Settings size={14} />
+          {state.rules.rounds} round{state.rules.rounds === 1 ? "" : "s"} ·{" "}
           {state.rules.turnSeconds}s turns · House rules
         </button>
       </div>

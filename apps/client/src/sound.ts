@@ -16,6 +16,16 @@ let enabled = true,
 let ambient: Howl | undefined;
 let alarm: Howl | undefined;
 
+/** Warm the reaction recordings so the first one isn't late. */
+export function preloadEmoteSounds() {
+  if (!enabled) return;
+  for (const [emoji, clip] of Object.entries(emoteClips)) {
+    const key = `emote:${emoji}`;
+    if (!sounds.has(key))
+      sounds.set(key, new Howl({ src: [`/audio/${clip.file}.mp3`], volume: clip.volume, preload: true }));
+  }
+}
+
 export function configureFlightSounds(on: boolean) {
   flightSounds = on;
 }
@@ -272,4 +282,150 @@ export function startDutchAlarm(level: number) {
 
 export function stopDutchAlarm() {
   alarm?.stop();
+}
+
+/* ---------- table reactions: every emoji has its own little sound ---------- */
+
+function tone(
+  ctx: AudioContext,
+  out: AudioNode,
+  at: number,
+  freq: number,
+  len: number,
+  peak: number,
+  type: OscillatorType = "sine",
+  glideTo?: number,
+) {
+  const osc = ctx.createOscillator();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, at);
+  if (glideTo) osc.frequency.exponentialRampToValueAtTime(glideTo, at + len);
+  const gain = envelope(ctx, at, peak, Math.min(0.02, len / 4), len);
+  osc.connect(gain).connect(out);
+  osc.start(at);
+  osc.stop(at + len + 0.05);
+}
+
+/** A short, bright "ha" through a vowel-ish formant. */
+function ha(ctx: AudioContext, out: AudioNode, at: number, pitch: number) {
+  const osc = ctx.createOscillator();
+  osc.type = "sawtooth";
+  osc.frequency.setValueAtTime(pitch * 1.08, at);
+  osc.frequency.exponentialRampToValueAtTime(pitch * 0.86, at + 0.12);
+  const formant = ctx.createBiquadFilter();
+  formant.type = "bandpass";
+  formant.frequency.value = 950;
+  formant.Q.value = 3;
+  const breath = noise(ctx, 0.14);
+  const breathFilter = ctx.createBiquadFilter();
+  breathFilter.type = "highpass";
+  breathFilter.frequency.value = 1800;
+  const gain = envelope(ctx, at, 0.5, 0.012, 0.11);
+  const breathGain = envelope(ctx, at, 0.08, 0.005, 0.07);
+  osc.connect(formant).connect(gain).connect(out);
+  breath.connect(breathFilter).connect(breathGain).connect(out);
+  osc.start(at);
+  osc.stop(at + 0.16);
+  breath.start(at);
+}
+
+function clap(ctx: AudioContext, out: AudioNode, at: number) {
+  for (let layer = 0; layer < 3; layer++) {
+    const burst = noise(ctx, 0.09);
+    const band = ctx.createBiquadFilter();
+    band.type = "bandpass";
+    band.frequency.value = 1100 + Math.random() * 900;
+    band.Q.value = 0.9;
+    const t = at + layer * 0.008 + Math.random() * 0.004;
+    const gain = envelope(ctx, t, 0.55, 0.002, 0.07);
+    burst.connect(band).connect(gain).connect(out);
+    burst.start(t);
+  }
+}
+
+/**
+ * Real recordings for each reaction (CC0, from Freesound; see README "Built-in sound").
+ * Trimmed to about two seconds and loudness-matched so no reaction drowns out the table.
+ */
+const emoteClips: Record<string, { file: string; volume: number }> = {
+  "😂": { file: "emote-laugh", volume: 0.75 },
+  "👏": { file: "emote-applause", volume: 0.8 },
+  "🥂": { file: "emote-clink", volume: 0.95 },
+  "😱": { file: "emote-gasp", volume: 0.8 },
+  "😏": { file: "emote-ooh", volume: 0.75 },
+  "👋": { file: "emote-whistle", volume: 0.7 },
+  "💚": { file: "emote-aww", volume: 0.75 },
+};
+
+/** Played at every seat when someone reacts, so the whole table hears it. */
+export function emoteSound(emoji: string) {
+  if (!enabled || volume === 0) return;
+  const clip = emoteClips[emoji];
+  if (!clip) return synthEmote(emoji);
+  const key = `emote:${emoji}`;
+  let sound = sounds.get(key);
+  if (!sound) {
+    sound = new Howl({
+      src: [`/audio/${clip.file}.mp3`],
+      volume: clip.volume,
+      preload: true,
+      // If the recording can't load, the table still hears something.
+      onloaderror: () => {
+        sounds.delete(key);
+        synthEmote(emoji);
+      },
+    });
+    sounds.set(key, sound);
+  }
+  sound.play();
+}
+
+/** Synthesized stand-ins, used only when a recording fails to load. */
+function synthEmote(emoji: string) {
+  const a = audio();
+  if (!a) return;
+  const { ctx, out, t } = a;
+  switch (emoji) {
+    case "😂":
+      [330, 315, 300, 285, 270, 250].forEach((p, i) =>
+        ha(ctx, out, t + i * 0.135 + (i % 2) * 0.01, p),
+      );
+      break;
+    case "👏":
+      for (let i = 0; i < 7; i++) clap(ctx, out, t + i * 0.12 + Math.random() * 0.025);
+      break;
+    case "🥂":
+      for (const at of [t, t + 0.16]) {
+        tone(ctx, out, at, 2637, 0.7, 0.12);
+        tone(ctx, out, at, 3951, 0.45, 0.06);
+        tone(ctx, out, at, 5274, 0.25, 0.03);
+      }
+      break;
+    case "😱": {
+      tone(ctx, out, t, 980, 0.6, 0.12, "triangle", 420);
+      const gasp = noise(ctx, 0.4);
+      const band = ctx.createBiquadFilter();
+      band.type = "bandpass";
+      band.frequency.value = 1400;
+      const gain = envelope(ctx, t, 0.22, 0.04, 0.32);
+      gasp.connect(band).connect(gain).connect(out);
+      gasp.start(t);
+      break;
+    }
+    case "😏":
+      tone(ctx, out, t, 420, 0.22, 0.16, "sine", 760);
+      tone(ctx, out, t + 0.24, 760, 0.3, 0.14, "sine", 520);
+      break;
+    case "👋":
+      tone(ctx, out, t, 1180, 0.12, 0.13, "sine", 1650);
+      tone(ctx, out, t + 0.16, 1650, 0.2, 0.12, "sine", 1250);
+      break;
+    case "💚":
+      [523.25, 659.25, 783.99, 1046.5].forEach((f, i) =>
+        tone(ctx, out, t + i * 0.08, f, 0.5, 0.11, "triangle"),
+      );
+      break;
+    default:
+      tone(ctx, out, t, 880, 0.25, 0.1);
+  }
 }

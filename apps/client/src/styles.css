@@ -50,3 +50,25 @@ h1,h2,h3{letter-spacing:-.7px;font-weight:650}h1 em,h2 em{font-style:normal;colo
  .app.in-game .site-header .brand>span:nth-child(2){font-size:19px;}
  .app.in-game .site-header nav{gap:5px;}
 }
+
+/* ---------- Dropdown: the app's own select ---------- */
+.dropdown{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:43px;padding:0 12px 0 15px;border-radius:6px;border:1px solid #64748b;background:#131b29;color:#f4f7ff;font-size:13px;text-align:left;transition:border-color .15s,background .15s}
+.dropdown:hover:not(:disabled){border-color:#8fa5c0;background:#172133}
+.dropdown.open,.dropdown:focus-visible{border-color:#abcaff;outline:none;box-shadow:0 0 0 3px #abcaff33}
+.dropdown:not(:disabled):active{transform:none}
+.dropdown-value{display:flex;align-items:baseline;gap:8px;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.dropdown-value small{font-size:11px;color:#9fb0cc}
+.dropdown-chevron{color:#9fb0cc;transition:transform .2s}
+.dropdown.open .dropdown-chevron{transform:rotate(180deg);color:#abcaff}
+.dropdown-menu{position:fixed;z-index:200;margin:0;padding:6px;list-style:none;overflow-y:auto;overscroll-behavior:contain;border-radius:12px;background:#202735;border:1px solid #8fa5c044;box-shadow:0 18px 48px #000a,0 2px 6px #0006;animation:dropdown-in .16s cubic-bezier(.2,.8,.2,1);scrollbar-width:thin;scrollbar-color:#46526a transparent;font-family:'Figtree','Manrope',system-ui,sans-serif}
+.dropdown-menu.up{animation-name:dropdown-in-up}
+.dropdown-menu li{display:flex;align-items:center;gap:8px;min-height:38px;padding:0 12px 0 8px;border-radius:8px;font-size:13px;color:#e6ecf7;cursor:pointer;user-select:none}
+.dropdown-menu li.active{background:#abcaff1f}
+.dropdown-menu li.chosen{color:#abcaff;font-weight:650}
+.dropdown-menu li small{margin-left:auto;padding-left:14px;font-size:11px;color:#9fb0cc;font-weight:500;white-space:nowrap}
+.dropdown-menu li.chosen small{color:#abcaffcc}
+.dropdown-check{width:16px;display:grid;place-items:center;flex:none;color:#abcaff}
+.dropdown-label{white-space:nowrap}
+@keyframes dropdown-in{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes dropdown-in-up{from{opacity:0;transform:translateY(4px) scale(.98)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.dropdown-menu{animation:none}}

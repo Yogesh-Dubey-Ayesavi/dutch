@@ -26,8 +26,9 @@ export function Results({ state: s }: { state: GameView }) {
     if (!result.caller) return;
     // The overspeed clacker plays live, during the free throws themselves
     // (see store.ts); the results screen only marks how the call landed.
-    const penalty = result.penalty[result.caller] ?? 0;
-    if (penalty > 0) playPullUp();
+    const failed =
+      result.callFailed ?? (result.penalty[result.caller] ?? 0) > 0;
+    if (failed) playPullUp();
     else playChime();
   }, [s.phase, s.history.length]);
   if (s.phase === "interrupted")
@@ -78,7 +79,9 @@ export function Results({ state: s }: { state: GameView }) {
       <header className="results-head">
         <Crown size={30} strokeWidth={1.4} className="crown" />
         <span className="eyebrow-d">
-          {finished ? "Match over" : `Round ${roundLabelFor(result.round)}`}
+          {finished
+            ? "Match over"
+            : `Round ${roundLabelFor(result.round)} · ${result.round} of ${s.rules.rounds}`}
           {result.jokerRank ? ` · ${rankLabel(result.jokerRank)}s are 0` : ""}
         </span>
         <h1>
@@ -124,6 +127,13 @@ export function Results({ state: s }: { state: GameView }) {
               {finished && <small>Match {total(p.id)}</small>}
               {(result.penalty[p.id] ?? 0) > 0 && (
                 <small>+{result.penalty[p.id]} call penalty</small>
+              )}
+              {(result.extraCards?.[p.id] ?? 0) > 0 && (
+                <small className="extra-cards">
+                  {finished
+                    ? "Dutch missed"
+                    : `+${result.extraCards![p.id]} card${result.extraCards![p.id] === 1 ? "" : "s"} next round`}
+                </small>
               )}
             </span>
           </li>
