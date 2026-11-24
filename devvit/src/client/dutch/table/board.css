@@ -1,0 +1,358 @@
+/* The Clutch board: "Clutch Duel Table v4". Everything is laid out on the design's 390 × 844 frame; one design
+   pixel is `var(--u)` (set from the viewport), so the same board fits a phone or a wide expanded post. */
+.board-root.table {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  height: 100dvh;
+  background: #0a0a09;
+  font-family: "Bricolage Grotesque Variable", system-ui, sans-serif;
+  --Y: oklch(0.9 0.17 100);
+  --MINT: oklch(0.82 0.14 165);
+  --DANGER: oklch(0.64 0.22 25);
+  --felt: radial-gradient(ellipse 70% 60% at 50% 42%, #2f5c9a 0%, #1e4176 55%, #142d55 100%);
+}
+.board {
+  --uu: var(--u);
+  position: relative;
+  width: calc(var(--bw, 390) * var(--u));
+  height: calc(786 * var(--u));
+  flex: none;
+  overflow: hidden;
+  background: radial-gradient(90% 60% at 50% 48%, #24211d 0%, #121110 70%);
+  color: #f2f0ea;
+  font-size: calc(14 * var(--u));
+}
+.board button { font-family: inherit; }
+.board > * { box-sizing: border-box; }
+
+/* ----- header ----- */
+.b-head { position: absolute; left: calc(16 * var(--u)); right: calc(16 * var(--u)); top: calc(48 * var(--u)); height: calc(54 * var(--u)); display: flex; align-items: stretch; gap: calc(6 * var(--u)); z-index: 12; }
+.b-round { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 calc(14 * var(--u)); background: #1f1e1b; border: 1px solid #2e2c28; }
+.b-round small { display: block; font-size: calc(10.5 * var(--u)); font-weight: 700; letter-spacing: 0.12em; color: #9c988e; margin-bottom: calc(3 * var(--u)); }
+.b-round b { display: block; font-size: calc(20 * var(--u)); font-weight: 800; line-height: 1; font-stretch: 80%; }
+.b-round b em { font-style: normal; color: #6e6a61; font-size: 0.92em; }
+.b-tools { display: flex; gap: calc(6 * var(--u)); }
+.b-tools > * { position: relative; }
+.board .b-tools .tool, .board .b-tools .chat-tool { width: calc(40 * var(--u)); height: auto; align-self: stretch; border-radius: 0; background: #1f1e1b; border: 1px solid #2e2c28; color: #9c988e; display: flex; align-items: center; justify-content: center; box-shadow: none; padding: 0; }
+.board .b-tools .table-menu { display: flex; }
+.board .b-tools .table-menu .tool { width: calc(36 * var(--u)); }
+.board .b-tools .chat-tool.on { background: #2a2924; border-color: #f2f0ea; color: #f2f0ea; }
+.board .b-tools .chat-tool .unread { position: absolute; top: calc(-6 * var(--u)); right: calc(-6 * var(--u)); min-width: calc(18 * var(--u)); height: calc(18 * var(--u)); padding: 0 4px; border-radius: 0; background: oklch(0.88 0.16 95); color: #141412; font-size: calc(11 * var(--u)); font-weight: 800; display: flex; align-items: center; justify-content: center; box-shadow: 2px 2px 0 #000; }
+.board .menu-pop { right: 0; top: calc(100% + 6px); border-radius: 0; background: #1a1917; border: 2px solid #f2f0ea; box-shadow: 6px 6px 0 #000; }
+.board .menu-pop button { border-radius: 0; font-weight: 700; }
+.board .b-net .net-badge { margin: 0; }
+
+/* ----- status band ----- */
+.b-status { position: absolute; left: calc(16 * var(--u)); right: calc(16 * var(--u)); top: calc(48 * var(--u)); z-index: 14; display: flex; flex-direction: column; pointer-events: none; }
+.b-status-row { height: calc(49 * var(--u)); display: flex; align-items: center; justify-content: space-between; padding: 0 calc(14 * var(--u)); }
+.b-status-row b { font-weight: 800; font-size: calc(19 * var(--u)); white-space: nowrap; }
+.b-status-row span { font-weight: 800; font-size: calc(22 * var(--u)); font-stretch: 75%; }
+.b-status-row.hot { background: var(--Y); color: #141412; }
+.b-status-row.you { background: #f2f0ea; color: #141412; }
+.b-status-bar { height: calc(5 * var(--u)); background: #26241f; position: relative; }
+.b-status-bar i { position: absolute; left: 0; top: 0; bottom: 0; transition: width 0.25s linear; }
+.b-status-bar i.hot { background: var(--Y); }
+.b-status-bar i.you { background: #f2f0ea; }
+
+/* ----- the table: rim, wood, felt ----- */
+.b-rim { position: absolute; left: calc(8 * var(--u)); right: calc(8 * var(--u)); top: calc(150 * var(--u)); height: calc(540 * var(--u)); border-radius: 50%; background: radial-gradient(ellipse 80% 60% at 50% 25%, #4a4440 0%, #2a2624 45%, #121010 100%); box-shadow: inset 0 3px 2px rgba(255,255,255,0.18), inset 0 -6px 10px rgba(0,0,0,0.7), 0 2px 0 #000, 0 26px 50px rgba(0,0,0,0.75); }
+.b-wood { position: absolute; left: calc(24 * var(--u)); right: calc(24 * var(--u)); top: calc(166 * var(--u)); height: calc(508 * var(--u)); border-radius: 50%; background: repeating-linear-gradient(98deg, rgba(0,0,0,0.12) 0 2px, transparent 2px 5px, rgba(255,255,255,0.05) 5px 6px, transparent 6px 9px), linear-gradient(180deg, #8a5a32 0%, #6b4122 50%, #4e2e16 100%); box-shadow: inset 0 2px 1px rgba(255,220,180,0.35), inset 0 -2px 2px rgba(0,0,0,0.5), 0 0 0 1px #2a170a; }
+.b-felt { position: absolute; left: calc(34 * var(--u)); right: calc(34 * var(--u)); top: calc(176 * var(--u)); height: calc(488 * var(--u)); border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.5), inset 0 6px 14px rgba(0,0,0,0.55), inset 0 0 60px rgba(0,0,0,0.45); overflow: hidden; transition: background 0.3s; }
+
+/* ----- opponent ----- */
+.b-plate { position: relative; overflow: hidden; display: flex; align-items: center; gap: calc(10 * var(--u)); height: calc(40 * var(--u)); padding: 0 calc(4 * var(--u)); background: #1f1e1b; border: 1px solid #3a3833; box-shadow: 4px 4px 0 #000; transition: border-color 0.2s, background 0.2s; }
+.b-plate.is-turn { background: #2a2924; border-color: #f2f0ea; }
+.b-plate.is-called { background: #2a2924; }
+.b-plate.away { opacity: 0.55; }
+.b-plate-av { width: calc(30 * var(--u)); height: calc(30 * var(--u)); display: flex; align-items: center; justify-content: center; color: #1a0c08; font-weight: 800; font-size: calc(15 * var(--u)); flex: none; }
+.b-plate-who { display: flex; flex-direction: column; min-width: 0; }
+.b-plate-who b { font-size: calc(13.5 * var(--u)); font-weight: 700; line-height: 1.1; white-space: nowrap; }
+.b-plate-who small { font-size: calc(11 * var(--u)); color: #9c988e; line-height: 1.2; white-space: nowrap; }
+.b-tag { padding: calc(3 * var(--u)) calc(6 * var(--u)); font-size: calc(10.5 * var(--u)); font-weight: 800; letter-spacing: 0.08em; }
+.b-plate-score { height: calc(30 * var(--u)); min-width: calc(40 * var(--u)); padding: 0 calc(6 * var(--u)); background: #0b0b0a; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: calc(26 * var(--u)); font-stretch: 75%; }
+.b-plate-sec { position: relative; height: calc(30 * var(--u)); min-width: calc(36 * var(--u)); padding: 0 calc(6 * var(--u)); color: #141412; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: calc(15 * var(--u)); }
+.b-plate-bar { position: absolute; left: 0; right: 0; bottom: 0; height: calc(4 * var(--u)); background: rgba(255,255,255,0.12); }
+.b-plate-bar i { display: block; height: 100%; transition: width 0.25s linear; }
+
+.b-opp { position: absolute; left: 0; right: 0; z-index: 3; display: flex; justify-content: center; transition: top 0.2s; }
+.board .b-opp .minis { display: flex; justify-content: center; gap: calc(8 * var(--u)); }
+.board .b-opp .mini { position: relative; flex: none; margin: 0 !important; padding: 0; background: none; transform: none; display: block; }
+.board .b-opp .mini.picked { transform: translateY(calc(-6 * var(--u))); }
+.board .b-opp .mini.tap { cursor: pointer; }
+.board .b-opp .mini.held-mini { margin-left: calc(10 * var(--u)) !important; transform: rotate(10deg) translateY(calc(-4 * var(--u))); animation: none; }
+.board .b-opp .mini .pc { border-radius: 3px; box-shadow: 0 1px 3px #0007; }
+.board .b-opp .mini.picked .pc { box-shadow: 0 0 0 3px var(--Y); }
+.board .b-opp .mini.tap .pc { box-shadow: 0 0 0 2px var(--Y), 0 1px 3px #0007; }
+.board .b-opp .mini.touched .pc { box-shadow: 0 0 0 2px #fff, 0 0 0 6px rgba(255,255,255,0.22); }
+.board .b-opp .mini.locked .pc { box-shadow: 0 0 0 2px #b9b3a6; }
+
+/* ----- cards ----- */
+
+/* ----- centre row ----- */
+.b-centre { position: absolute; left: 0; right: 0; top: calc(328 * var(--u)); display: flex; justify-content: center; align-items: flex-start; gap: calc(22 * var(--u)); z-index: 3; }
+.b-centre:has(.held-dock) { gap: calc(16 * var(--u)); }
+.b-col { display: flex; flex-direction: column; gap: calc(8 * var(--u)); align-items: center; position: static; transform: none; left: auto; bottom: auto; }
+.board .heap { position: relative; border-radius: 8% / 5.6%; touch-action: none; cursor: grab; }
+.board .heap[aria-disabled="true"] { cursor: default; }
+.board .heap > .pc { position: absolute; inset: 0; }
+.deck-shadow { position: absolute; inset: 0; transform: translate(4px, 4px); background: #0e0e0c; border: 1px solid #2e2c28; border-radius: 3px; }
+.board .heap .count { position: absolute; right: calc(-10 * var(--u)); top: calc(-8 * var(--u)); z-index: 5; min-width: calc(24 * var(--u)); height: calc(22 * var(--u)); padding: 0 calc(6 * var(--u)); border-radius: 0; background: #121110; border: 1px solid #3a3833; color: #c8c4ba; font-size: calc(12 * var(--u)); font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.board .deck > .pc { z-index: 1; }
+.b-ring { padding: calc(5 * var(--u)); border: 3px solid transparent; transition: border-color 0.15s; }
+.pile-ghost { position: absolute; inset: 0; border-radius: calc(5 * var(--u)); background: rgba(0,0,0,0.22); box-shadow: inset 0 2px 6px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.06); }
+.board .discard.empty { border: 0; }
+.board .browse-discard { position: absolute; left: calc(-4 * var(--u)); right: auto; top: auto; width: auto; min-width: 0; bottom: calc(-6 * var(--u)); z-index: 6; height: calc(20 * var(--u)); padding: 0 calc(6 * var(--u)); border-radius: 0; background: #121110; border: 1px solid #3a3833; color: #c8c4ba; font-size: calc(11 * var(--u)); font-weight: 800; display: flex; align-items: center; gap: 3px; }
+.b-throw { font-weight: 800; font-size: calc(13 * var(--u)); letter-spacing: 0.08em; color: var(--Y); }
+.board .held-dock { position: absolute; left: 50%; bottom: calc(100% + 6 * var(--u)); transform: translateX(-50%); z-index: 30; display: flex; flex-direction: row; align-items: flex-end; gap: calc(10 * var(--u)); }
+.board .held-dock .held-discard { position: absolute; left: calc(100% + 10 * var(--u)); bottom: 0; white-space: nowrap; }
+.board .held { transform: none; }
+.board .held .pc { animation: d-hover 2.4s ease-in-out infinite; box-shadow: 0 0 0 2px var(--Y), 0 14px 26px #000a; }
+.b-drew { font-size: calc(12 * var(--u)); font-weight: 700; color: #c8c4ba; margin-top: calc(6 * var(--u)); }
+
+/* ----- stamp, counters, pills ----- */
+.b-stamp { position: absolute; left: 0; right: 0; top: calc(372 * var(--u)); display: flex; flex-direction: column; align-items: center; z-index: 16; pointer-events: none; animation: cl-stamp 0.5s ease-out both; }
+.b-stamp b { transform: rotate(-4deg); background: var(--Y); color: #141412; padding: calc(10 * var(--u)) calc(22 * var(--u)); font-weight: 800; font-size: calc(38 * var(--u)); letter-spacing: -0.02em; line-height: 1; box-shadow: 8px 8px 0 #000; }
+.b-stamp span { margin-top: calc(14 * var(--u)); background: #f7f5ef; color: #141412; padding: calc(5 * var(--u)) calc(10 * var(--u)); font-weight: 800; font-size: calc(14 * var(--u)); box-shadow: 3px 3px 0 #000; }
+.board .b-done { height: calc(36 * var(--u)); padding: 0 calc(16 * var(--u)); background: var(--Y); color: #141412; font-weight: 800; font-size: calc(15 * var(--u)); box-shadow: 4px 4px 0 #000; }
+.b-turnpill { position: absolute; left: 0; right: 0; display: flex; justify-content: center; z-index: 5; pointer-events: none; }
+.b-turnpill > * { }
+.b-turnpill { top: calc(248 * var(--u)); }
+.b-turnpill { align-items: center; gap: calc(8 * var(--u)); height: calc(30 * var(--u)); margin: 0 auto; width: max-content; left: 50%; right: auto; transform: translateX(-50%); padding: 0 calc(12 * var(--u)); font-size: calc(13 * var(--u)); font-weight: 800; letter-spacing: 0.06em; box-shadow: 3px 3px 0 #000; }
+.b-turnpill b { font-stretch: 75%; font-size: calc(16 * var(--u)); letter-spacing: 0; }
+.b-turnpill.theirs { background: #f2f0ea; color: #141412; }
+.b-turnpill.mine { background: var(--Y); color: #141412; }
+
+/* ----- your hand ----- */
+.board .hand-area { position: absolute; left: 0; right: 0; z-index: 4; }
+.board .hand { position: relative; display: flex; justify-content: center; padding: 0; min-height: calc(104 * var(--u)); overflow: visible; scroll-snap-type: none; }
+.board .hc { position: relative; flex: none; padding: 0; border-radius: 0; background: none; scroll-snap-align: none; touch-action: none; cursor: grab; transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1) !important; display: block; }
+.board .hc[aria-disabled="true"] { cursor: default; }
+.board .hc .pc { transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.3, 1); }
+.board .hc.sel .pc { transform: translateY(calc(-12 * var(--u))); box-shadow: 0 0 0 3px var(--Y), 0 14px 22px rgba(0,0,0,0.5); }
+.board .hc.beckon .pc { animation: none; box-shadow: 0 5px 12px #0007; }
+.board .hand.placeable .hc .pc { box-shadow: 0 5px 12px #0007; }
+.board .hc.drop-target .pc { transform: translateY(calc(-10 * var(--u))); filter: none; box-shadow: 0 0 0 3px var(--Y); }
+@media (hover: hover) { .board .hc:not([aria-disabled="true"]):hover .pc { transform: translateY(calc(-4 * var(--u))); } .board .hc.sel:hover .pc { transform: translateY(calc(-12 * var(--u))); } }
+.board .hc.lifting .pc { transform: none; box-shadow: 0 22px 36px #000a; }
+.board .drop-slot { top: 0; border-radius: calc(5 * var(--u)); border: 2px dashed var(--Y); background: oklch(0.9 0.17 100 / 0.08); }
+.board .chips { top: 0; transform: translate(-50%, -80%); }
+.board .chip { border-radius: 0; box-shadow: 3px 3px 0 #000; background: #f7f5ef !important; color: #141412 !important; font-weight: 800; }
+.board .chip.hot { background: var(--Y) !important; }
+.board .peek-hide { top: calc(4 * var(--u)); right: calc(4 * var(--u)); }
+
+.b-hint { position: absolute; left: calc(20 * var(--u)); right: calc(20 * var(--u)); top: calc(714 * var(--u)); margin: 0; font-size: calc(14.5 * var(--u)); line-height: 1.35; color: #c8c4ba; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 3; }
+.b-hint.quiet { color: #9c988e; }
+
+/* ----- bottom bar ----- */
+.b-bar { position: absolute; left: calc(16 * var(--u)); right: calc(16 * var(--u)); bottom: calc(36 * var(--u)); display: grid; grid-template-columns: minmax(0, 1fr) calc(140 * var(--u)); gap: calc(8 * var(--u)); z-index: 6; }
+.board .b-call { height: calc(60 * var(--u)); background: #1f1e1b; color: #4f4c45; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: calc(25 * var(--u)); letter-spacing: 0.02em; box-shadow: inset 0 0 0 1px #2e2c28; }
+.board .b-call.on { background: var(--Y); color: #141412; box-shadow: 4px 4px 0 #000; }
+.board .b-call.on:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 #000; }
+.board .b-call.window { animation: cl-window 1.2s ease-in-out infinite; }
+.board .b-call.undo { background: var(--DANGER); color: #fff; box-shadow: 4px 4px 0 #000; font-size: calc(22 * var(--u)); }
+@keyframes cl-window { 50% { box-shadow: 4px 4px 0 #000, 0 0 0 4px oklch(0.9 0.17 100 / 0.55); } }
+.board .b-you { position: relative; height: calc(60 * var(--u)); background: #1f1e1b; border: 1px solid #2e2c28; display: flex; align-items: center; justify-content: space-between; padding: 0 calc(12 * var(--u)); overflow: hidden; text-align: left; }
+.board .b-you.live { border-color: #f2f0ea; }
+.b-you-l { display: flex; flex-direction: column; gap: 2px; }
+.b-you-l small { font-size: calc(10 * var(--u)); font-weight: 700; letter-spacing: 0.04em; color: #9c988e; white-space: nowrap; }
+.b-you-l small em { font-style: normal; color: #f2f0ea; }
+.b-you-l b { font-size: calc(11 * var(--u)); font-weight: 700; color: var(--MINT); }
+.b-you-score { font-weight: 800; font-size: calc(40 * var(--u)); line-height: 0.8; font-stretch: 75%; }
+.b-you-bar { position: absolute; left: 0; bottom: 0; height: calc(4 * var(--u)); transition: width 0.25s linear; }
+.board .b-bar .emotes { position: absolute; right: 0; bottom: calc(100% + 8 * var(--u)); border-radius: 0; background: #1a1917; border: 2px solid #f2f0ea; box-shadow: 4px 4px 0 #000; }
+.board .b-bar .emotes button { border-radius: 0; }
+
+/* ----- toast, moderator, misc ----- */
+.b-toast { position: absolute; left: calc(16 * var(--u)); right: calc(16 * var(--u)); top: calc(48 * var(--u)); z-index: 30; height: calc(54 * var(--u)); display: flex; align-items: center; padding: 0 calc(14 * var(--u)); background: #f7f5ef; color: #141412; font-size: calc(15 * var(--u)); font-weight: 800; box-shadow: 5px 5px 0 #000; border-left: 8px solid var(--Y); animation: cl-toast 0.18s ease-out; pointer-events: none; }
+/* The dealer's choice: how many cards each player may look at this round. Sits over the piles (nothing to draw yet). */
+.b-deal { position: absolute; left: calc(28 * var(--u)); right: calc(28 * var(--u)); top: calc(226 * var(--u)); z-index: 12; padding: calc(16 * var(--u)) calc(16 * var(--u)) calc(18 * var(--u)); background: #1a1917; border: 2px solid #f2f0ea; box-shadow: 6px 6px 0 #000; color: #f2f0ea; text-align: center; overflow: hidden; animation: cl-toast 0.2s ease-out; }
+.b-deal-k { display: inline-block; padding: calc(3 * var(--u)) calc(8 * var(--u)); background: var(--Y); color: #141412; font-size: calc(11 * var(--u)); font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+.b-deal-q { margin-top: calc(10 * var(--u)); font-size: calc(17 * var(--u)); font-weight: 800; line-height: 1.25; }
+.b-deal-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: calc(10 * var(--u)); margin-top: calc(14 * var(--u)); }
+.b-deal-row button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(2 * var(--u)); height: calc(72 * var(--u)); border: 0; border-radius: 0; background: #f7f5ef; color: #141412; box-shadow: 4px 4px 0 #000; cursor: pointer; }
+.b-deal-row button b { font-size: calc(32 * var(--u)); line-height: 1; font-weight: 800; font-stretch: 75%; }
+.b-deal-row button span { font-size: calc(11 * var(--u)); font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.6; }
+.b-deal-row button:active:not(:disabled) { transform: translate(3px, 3px); box-shadow: 1px 1px 0 #000; }
+.b-deal-row button:disabled { opacity: 0.5; }
+.b-deal-note { margin-top: calc(12 * var(--u)); font-size: calc(13 * var(--u)); line-height: 1.35; color: #bdb9ae; }
+.b-deal-bar { position: absolute; left: 0; right: 0; bottom: 0; height: calc(3 * var(--u)); transform-origin: left; }
+
+/* trays + overlays sit over the whole board */
+.board .tray-back { position: absolute; z-index: 40; }
+.board .tray { position: absolute; z-index: 41; border-radius: 0; background: #1a1917; border: 2px solid #f2f0ea; box-shadow: 6px 6px 0 #000; }
+.board .tray-card, .board .discard-arc-card { border-radius: 0; }
+.board .keys { position: absolute; z-index: 60; }
+
+/* chat: bottom sheet over the board */
+.board .chat-scrim { position: absolute; z-index: 50; }
+.board .chat-panel { position: absolute; z-index: 51; border-radius: 0; background: #1a1917; border-top: 2px solid #f2f0ea; box-shadow: none; }
+.board .chat-toast { position: absolute; z-index: 45; border-radius: 0; background: #f7f5ef; color: #141412; box-shadow: 4px 4px 0 #000; }
+.board .burst-layer { position: absolute; z-index: 55; }
+
+/* the flights (pickup, throws, swaps) are fixed-position overlays in screen px */
+
+.board .b-call, .board .b-you, .board .b-done { font-family: inherit; }
+.board .b-call { font-weight: 800; }
+
+.board .chat-scrim { inset: 0; }
+.board .chat-panel { left: 0; right: 0; bottom: 0; top: auto; width: auto; max-width: none; height: calc(468 * var(--u)); transform: none; margin: 0; }
+
+.board .held.lifting .pc { animation: none; }
+.board .held-discard { border-radius: 0; background: #f7f5ef; color: #141412; border: 0; box-shadow: 3px 3px 0 #000; font-weight: 800; font-size: calc(12 * var(--u)); padding: calc(6 * var(--u)) calc(12 * var(--u)); }
+.board .slot-key { display: none !important; }
+.board .deck.can .pc, .board .discard.can .pc { box-shadow: 0 5px 12px #0007; }
+.board .discard.toss .pc { box-shadow: 0 5px 12px #0007; }
+
+.b-hint.power { color: #f2f0ea; font-weight: 700; }
+.b-hint-badge { display: inline-flex; align-items: center; justify-content: center; width: calc(22 * var(--u)); height: calc(22 * var(--u)); margin-right: calc(8 * var(--u)); vertical-align: middle; background: #f7f5ef; color: #141412; font-style: normal; font-weight: 800; font-size: calc(13 * var(--u)); box-shadow: 2px 2px 0 #000; }
+
+/* While the drawn card is being dragged, nothing may sit on top of it. */
+.board .held-dock:has(.held.lifting) .held-discard { opacity: 0; pointer-events: none; transition: none; }
+.board .held.lifting { z-index: 60; }
+/* The pile count sits under the card, never over its printed corner. */
+.board .browse-discard { bottom: calc(-24 * var(--u)); left: 50%; transform: translateX(-50%); }
+
+/* Connection badge: flat and boxy like the rest of the header, no pill, no navy. */
+.board .b-net .net-badge {
+  display: inline-flex !important; align-items: center; gap: calc(6 * var(--u));
+  height: auto !important; min-width: 0 !important; margin: 0 !important; padding: 0 !important;
+  border: 0 !important; border-radius: 0 !important; background: none !important; box-shadow: none !important;
+  color: #9c988e !important; font-size: calc(11.5 * var(--u)) !important; font-weight: 700; letter-spacing: 0.04em; white-space: nowrap;
+}
+.board .b-net .net-badge span { display: inline !important; font-size: inherit !important; color: inherit !important; font-variant-numeric: tabular-nums; }
+.board .b-net .net-badge .signal { width: calc(16 * var(--u)); height: calc(12 * var(--u)); }
+.board .b-net .net-badge .signal rect { fill: #3a3833 !important; }
+.board .b-net .net-badge.good .signal rect.on { fill: var(--MINT) !important; }
+.board .b-net .net-badge.ok .signal rect.on { fill: var(--Y) !important; }
+.board .b-net .net-badge.poor .signal rect.on, .board .b-net .net-badge.down .signal rect.on { fill: var(--DANGER) !important; }
+.board .b-net .net-badge.poor, .board .b-net .net-badge.down { color: var(--DANGER) !important; }
+
+/* ----- smoothness: what moves gets its own compositor layer; nothing animates paint -----
+   Hand cards are dragged and glided by transform. As layers, moving them is pure compositing: the felt, rim
+   and the other cards under them are not repainted on every pointer move (Safari paints on the main thread,
+   so that repaint is exactly what made drags and flights stutter). A handful of card-sized layers is cheap. */
+.board .hc, .board .held, .board .drop-slot { will-change: transform; }
+.drag-ghost, .riffle-card, .throw-ghost, .pickup-fly { will-change: transform; }
+/* Card backs are a shared image (see CardArtwork.tsx); never let the browser start a native image drag. */
+.pc > img { display: block; width: 100%; height: 100%; pointer-events: none; -webkit-user-drag: none; user-select: none; -webkit-user-select: none; }
+/* Glows fade a pre-painted ring's opacity instead of animating box-shadow on the card (motion.ts `glow`). */
+.glow-ring { position: absolute; z-index: 3; pointer-events: none; border-radius: 8% / 5.6%; will-change: opacity; }
+/* Timer bars: one scaleX animation per deadline (Clock.tsx) instead of a width re-set five times a second. */
+.board .drain { width: 100% !important; transform-origin: 0 50%; animation-name: cl-drain; animation-timing-function: linear; animation-fill-mode: both; transition: none !important; will-change: transform; }
+@keyframes cl-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+/* The CALL LOW window pulse fades a ring in and out rather than animating the button's box-shadow. */
+.board .b-call.window { animation: none; position: relative; }
+.board .b-call.window::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: 0 0 0 4px oklch(0.9 0.17 100 / 0.55); opacity: 0; animation: cl-window-ring 1.2s ease-in-out infinite; }
+.table.still .b-call.window::after { animation: none; }
+@keyframes cl-window-ring { 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .board .b-call.window::after { animation: none; } }
+
+/* No highlight on the pile during a normal free-throw window: players know they can throw. */
+.board .discard.reacting, .board .discard.reacting .pc { box-shadow: none; outline: 0; animation: none; }
+.board .discard.reacting::after, .board .discard.reacting::before { display: none; }
+
+/* The reorder placeholder is invisible: the cards themselves slide apart to show where one will land. */
+.board .drop-slot, .board .drop-slot.on { border: 0 !important; background: none !important; box-shadow: none !important; outline: 0 !important; opacity: 0 !important; }
+
+/* Quick replies: the only table talk. */
+.board .chat-presets { display: flex; flex-wrap: wrap; gap: calc(6 * var(--u)); padding: calc(10 * var(--u)) calc(16 * var(--u)) calc(30 * var(--u)); }
+.board .chat-presets button { height: calc(40 * var(--u)); padding: 0 calc(14 * var(--u)); background: #26241f; border: 1px solid #3a3833; color: #f2f0ea; font-size: calc(14 * var(--u)); font-weight: 700; border-radius: 0; }
+.board .chat-presets button:active { background: var(--Y); color: #141412; }
+
+/* Only the open felt clears a selection; the rows above it must not swallow those taps. */
+.board .b-centre { pointer-events: none; }
+.board .b-centre > * { pointer-events: auto; }
+
+/* The design frame reserves a phone status bar (top 36) and a home-indicator gap (bottom 22) that the Reddit view doesn't have. */
+.board .board-in { position: absolute; left: 0; top: calc(-36 * var(--u)); width: 100%; height: calc(844 * var(--u)); }
+
+/* Power bar: the status band, expanded, when a Jack / Queen / Ace is waiting for you to use it. */
+.board .b-status-row.power { height: calc(62 * var(--u)); gap: calc(12 * var(--u)); padding: 0 calc(10 * var(--u)) 0 calc(10 * var(--u)); justify-content: flex-start; }
+.board .b-status-badge { flex: none; width: calc(38 * var(--u)); height: calc(38 * var(--u)); display: flex; align-items: center; justify-content: center; background: #141412; color: #f7f5ef; font-style: normal; font-weight: 800; font-size: calc(22 * var(--u)); }
+.board .b-status-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: calc(1 * var(--u)); }
+.board .b-status-text b { font-size: calc(18 * var(--u)); line-height: 1.1; white-space: nowrap; }
+.board .b-status-text small { font-size: calc(12.5 * var(--u)); font-weight: 600; color: #4b483f; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.board .b-status-skip { flex: none; pointer-events: auto; height: calc(34 * var(--u)); padding: 0 calc(12 * var(--u)); background: transparent; color: #141412; border: 2px solid #141412; font-weight: 800; font-size: calc(13 * var(--u)); letter-spacing: 0.06em; text-transform: uppercase; }
+.board .b-status-skip:active { background: #141412; color: #f7f5ef; }
+.board .b-status-sec { flex: none; }
+.board .b-status-row.power .b-status-sec { font-weight: 800; font-size: calc(22 * var(--u)); font-stretch: 75%; min-width: calc(34 * var(--u)); text-align: right; }
+
+/* Header: the rival's plate takes the slot the round box had; chat, ping and menu sit at the right end. */
+.b-head > .b-plate { flex: 1; min-width: 0; height: auto; align-self: stretch; gap: calc(8 * var(--u)); padding: 0 calc(6 * var(--u)); box-shadow: none; }
+.b-head > .b-plate .b-plate-who { flex: 1; }
+.b-head > .b-plate .b-plate-who b { overflow: hidden; text-overflow: ellipsis; }
+.b-head > .b-plate .b-plate-sec { margin-right: calc(-2 * var(--u)); }
+.b-net { display: flex; align-items: center; justify-content: center; padding: 0 calc(10 * var(--u)); background: #1f1e1b; border: 1px solid #2e2c28; }
+/* Phones: bars only, their colour says how good the line is. */
+@media (max-width: 600px) {
+  .b-net { padding: 0; width: calc(40 * var(--u)); }
+  .board .b-net .net-badge > span { display: none !important; }
+  /* Room for the name: the white border and the countdown already say it's their turn. */
+  .b-head > .b-plate.is-turn:not(.is-called) .b-tag { display: none; }
+}
+
+/* ----- one continuous header bar: rival plate | chat | ping | menu ----- */
+.b-head { gap: 0; background: #1f1e1b; border: 1px solid #2e2c28; height: calc(52 * var(--u)); }
+.b-head > * { border: 0 !important; }
+.b-head > .b-plate { background: transparent; }
+.b-head > .b-plate.is-turn { background: #2a2924; box-shadow: inset 0 0 0 1px #f2f0ea; }
+.b-head > .b-plate.is-called { box-shadow: inset 0 0 0 1px var(--Y); }
+.b-head .b-tools { gap: 0; }
+.b-head .b-tools > *, .b-head .b-net { border-left: 1px solid #2e2c28 !important; }
+.board .b-head .b-tools .tool, .board .b-head .b-tools .chat-tool, .b-head .b-net { background: transparent; border-top: 0; border-right: 0; border-bottom: 0; }
+.board .b-head .b-tools .table-menu .tool { border-left: 0 !important; }
+
+/* ----- table sits right under the header (the old plate row is gone): everything on the felt moves up 30 ----- */
+.b-rim { top: calc(120 * var(--u)); }
+.b-wood { top: calc(136 * var(--u)); }
+.b-felt { top: calc(146 * var(--u)); }
+.b-centre { top: calc(298 * var(--u)); }
+.b-stamp { top: calc(342 * var(--u)); }
+.b-turnpill { top: calc(218 * var(--u)); }
+.b-hint { top: calc(690 * var(--u)); }
+
+/* ----- status tag: the same hard-edged tag as YOUR TURN / THEIR TURN, so every message speaks one language.
+   It sits just above your hand (or at the top of the felt while you hold a drawn card). ----- */
+.b-tagline { position: absolute; left: 50%; transform: translateX(-50%); z-index: 9; display: flex; align-items: stretch; gap: calc(6 * var(--u)); pointer-events: none; animation: cl-tag-in 0.22s ease-out both; }
+@keyframes cl-tag-in { from { opacity: 0; transform: translate(-50%, calc(6 * var(--u))); } to { opacity: 1; transform: translate(-50%, 0); } }
+.b-pill { position: relative; overflow: hidden; display: flex; align-items: center; gap: calc(8 * var(--u)); height: calc(30 * var(--u)); padding: 0 calc(12 * var(--u)); color: #141412; font-size: calc(13 * var(--u)); font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; box-shadow: 3px 3px 0 #000; }
+.b-pill.you { background: #f2f0ea; }
+.b-pill.hot { background: var(--Y); }
+.b-pill b { font-stretch: 75%; font-size: calc(16 * var(--u)); letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.b-pill-badge { width: calc(20 * var(--u)); height: calc(20 * var(--u)); margin-left: calc(-6 * var(--u)); display: flex; align-items: center; justify-content: center; background: #141412; color: #f7f5ef; font-style: normal; font-size: calc(12 * var(--u)); letter-spacing: 0; }
+.b-pill-bar { position: absolute; left: 0; right: 0; bottom: 0; height: calc(3 * var(--u)); background: rgba(20,20,18,0.15); }
+.b-pill-bar i { position: absolute; inset: 0; background: #141412; opacity: 0.55; }
+.b-pill-skip { pointer-events: auto; height: calc(30 * var(--u)); padding: 0 calc(12 * var(--u)); background: #141412; color: #f2f0ea; border: 1px solid #f2f0ea; font-size: calc(12 * var(--u)); font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; box-shadow: 3px 3px 0 #000; }
+.b-pill-skip:active { background: #f2f0ea; color: #141412; }
+.table.still .b-tagline { animation: none; }
+
+/* Header, final pass: no dividers; the turn timer runs along the whole header's bottom edge, and on the rival's
+   turn the whole header (not just the plate) gets the white outline. */
+.b-head { overflow: hidden; transition: border-color 0.2s, background 0.2s; }
+.b-head .b-tools > *, .b-head .b-net { border-left: 0 !important; }
+.b-head > .b-plate { position: static; overflow: visible; }
+.b-head > .b-plate.is-turn, .b-head > .b-plate.is-called { box-shadow: none; background: transparent; }
+.b-head:has(> .b-plate.is-turn) { border-color: #f2f0ea; background: #2a2924; }
+.b-head:has(> .b-plate.is-called) { border-color: var(--Y); }
+.b-head > .b-plate .b-plate-bar { left: 0; right: 0; bottom: 0; z-index: 1; }
+.b-head .b-net, .board .b-head .b-tools .tool, .board .b-head .b-tools .chat-tool, .b-head .b-tools .table-menu { border: 0 !important; }
+
+/* ----- App bar ----- */
+/* The menu's dropdown hangs below the bar, so the bar must never clip (that is what swallowed the menu tap). */
+.b-head { overflow: visible; height: calc(56 * var(--u)); padding: 0 calc(4 * var(--u)) 0 calc(8 * var(--u)); align-items: center; }
+.b-head > .b-plate { align-self: stretch; padding: 0; gap: calc(10 * var(--u)); }
+.b-head .b-plate-av { width: calc(38 * var(--u)); height: calc(38 * var(--u)); border-radius: 50%; box-shadow: 0 0 0 2px #141412, 0 0 0 3px #3a3833; font-size: calc(17 * var(--u)); }
+.b-head:has(> .b-plate.is-turn) .b-plate-av { box-shadow: 0 0 0 2px #141412, 0 0 0 4px #f2f0ea; }
+.b-head .b-plate-who b { font-size: calc(15 * var(--u)); }
+.b-head .b-plate-who small { font-size: calc(11.5 * var(--u)); margin-top: calc(2 * var(--u)); }
+.b-head .b-plate-score { height: calc(34 * var(--u)); min-width: calc(38 * var(--u)); font-size: calc(24 * var(--u)); background: #0b0b0a; border: 1px solid #2e2c28; }
+.b-head .b-plate-sec { height: calc(34 * var(--u)); min-width: calc(40 * var(--u)); font-size: calc(15 * var(--u)); }
+.b-head .b-tools { align-self: stretch; align-items: center; gap: calc(2 * var(--u)); margin-left: calc(6 * var(--u)); }
+.board .b-head .b-tools .tool, .board .b-head .b-tools .chat-tool, .b-head .b-net { width: calc(40 * var(--u)); height: calc(40 * var(--u)); align-self: center; padding: 0; color: #c8c4ba; background: transparent; }
+.board .b-head .b-tools .table-menu .tool { width: calc(36 * var(--u)); }
+.board .b-head .b-tools .tool:active, .board .b-head .b-tools .chat-tool:active, .board .b-head .b-tools .chat-tool.on { background: #2a2924; color: #f2f0ea; }
+.b-head > .b-plate .b-plate-bar { left: -1px; right: -1px; bottom: -1px; height: calc(3 * var(--u)); }
