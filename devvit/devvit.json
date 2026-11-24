@@ -1,0 +1,60 @@
+{
+  "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
+  "name": "clutch-duel",
+  "post": {
+    "dir": "dist/client",
+    "entrypoints": {
+      "default": {
+        "entry": "launch.html",
+        "height": "regular"
+      },
+      "game": {
+        "entry": "game.html"
+      },
+      "tutorial": {
+        "entry": "tutorial.html"
+      }
+    }
+  },
+  "server": {
+    "dir": "dist/server",
+    "entry": "index.cjs"
+  },
+  "permissions": {
+    "redis": true,
+    "realtime": true,
+    "reddit": {
+      "enable": true,
+      "scope": "user",
+      "asUser": [
+        "SUBMIT_COMMENT",
+        "SUBSCRIBE_TO_SUBREDDIT"
+      ]
+    }
+  },
+  "menu": {
+    "items": [
+      {
+        "label": "Create a Clutch duel post",
+        "description": "Posts the 1v1 card duel game in this subreddit",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/create-post"
+      }
+    ]
+  },
+  "scheduler": {
+    "tasks": {
+      "cleanup": {
+        "endpoint": "/internal/scheduler/cleanup",
+        "cron": "0 * * * *"
+      }
+    }
+  },
+  "dev": {
+    "subreddit": "vibe_editors"
+  },
+  "marketingAssets": {
+    "icon": "assets/icon.png"
+  }
+}

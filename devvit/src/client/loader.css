@@ -1,0 +1,36 @@
+/*
+ * The loading screen: three face-down cards fan out, the middle one flips to show an Ace, and they gather again.
+ * Pure CSS and linked from the HTML, so it plays the moment the page opens, before the app's script has arrived.
+ * React shows the same markup (Loading in ui.tsx) while it waits for the server, so the hand-over is seamless.
+ */
+html, body { margin: 0; height: 100%; background: #121110; }
+.cl-load { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 34px; background: radial-gradient(90% 60% at 50% 40%, #24211d 0%, #121110 70%); color: #f2f0ea; font-family: 'Bricolage Grotesque Variable', system-ui, -apple-system, 'Segoe UI', sans-serif; }
+.cl-load-hand { position: relative; width: 180px; height: 120px; perspective: 600px; }
+.cl-load-card { position: absolute; left: 61px; top: 8px; width: 58px; height: 82px; transform-style: preserve-3d; animation: 2.4s cubic-bezier(.5, 0, .3, 1) infinite; }
+.cl-load-card i { position: absolute; inset: 0; border-radius: 5px; backface-visibility: hidden; box-shadow: 0 6px 14px #0009; }
+/* The back: our blue deck, a white edge, a fine lattice and the diamond. */
+.cl-load-back { background:
+    linear-gradient(45deg, transparent 47%, #ffffff22 47% 53%, transparent 53%) 0 0 / 10px 10px,
+    linear-gradient(-45deg, transparent 47%, #ffffff22 47% 53%, transparent 53%) 0 0 / 10px 10px,
+    #2547a3; border: 3px solid #f7f5ef; box-sizing: border-box; }
+.cl-load-back::after { content: ''; position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; transform: rotate(45deg); border: 2px solid #f7f5ef; background: #2547a3; }
+.cl-load-face { transform: rotateY(180deg); background: #f7f5ef; color: #141412; font-style: normal; display: flex; align-items: center; justify-content: center; font-size: 34px; line-height: 1; }
+.cl-load-face::before { content: 'A'; position: absolute; left: 6px; top: 5px; font-size: 14px; font-weight: 800; }
+.cl-load-card:nth-child(1) { animation-name: cl-load-left; }
+.cl-load-card:nth-child(2) { animation-name: cl-load-right; }
+.cl-load-card:nth-child(3) { animation-name: cl-load-mid; z-index: 1; }
+@keyframes cl-load-left { 0%, 12%, 88%, 100% { transform: none; } 30%, 70% { transform: translate(-50px, 10px) rotate(-14deg); } }
+@keyframes cl-load-right { 0%, 12%, 88%, 100% { transform: none; } 30%, 70% { transform: translate(50px, 10px) rotate(14deg); } }
+@keyframes cl-load-mid { 0%, 14%, 86%, 100% { transform: none; } 32% { transform: translateY(-14px) rotateY(0); } 46%, 64% { transform: translateY(-14px) rotateY(180deg); } 80% { transform: translateY(0) rotateY(360deg); } }
+.cl-load-name { font-weight: 800; font-size: 34px; letter-spacing: -0.02em; font-stretch: 75%; line-height: 1; }
+.cl-load-note { margin-top: 10px; font-size: 12px; font-weight: 800; letter-spacing: 0.14em; color: #9c988e; text-transform: uppercase; }
+.cl-load-note b { display: inline-block; width: 1.4em; text-align: left; font-weight: 800; }
+.cl-load-note b::after { content: ''; animation: cl-load-dots 1.2s steps(4) infinite; }
+@keyframes cl-load-dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+.cl-load-text { display: flex; flex-direction: column; align-items: center; }
+@media (prefers-reduced-motion: reduce) {
+  .cl-load-card { animation: none !important; }
+  .cl-load-card:nth-child(1) { transform: translate(-30px, 6px) rotate(-10deg); }
+  .cl-load-card:nth-child(2) { transform: translate(30px, 6px) rotate(10deg); }
+  .cl-load-note b::after { content: '...'; animation: none; }
+}
