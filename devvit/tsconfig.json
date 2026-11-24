@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "types": [
+      "node",
+      "vite/client"
+    ],
+    "paths": {
+      "@engine": [
+        "../packages/engine/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "src/server",
+    "src/shared",
+    "*.ts"
+  ]
+}

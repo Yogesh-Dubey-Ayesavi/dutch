@@ -1,0 +1,41 @@
+{
+  "name": "clutch-duel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "vite build --config vite.client.config.ts",
+    "build:server": "vite build --config vite.server.config.ts",
+    "dev": "npm run build && devvit playtest",
+    "deploy": "npm run build && devvit upload",
+    "launch": "npm run deploy && devvit publish",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.client.json",
+    "test": "vitest run",
+    "local:server": "vite-node --config dev/vite.server.config.ts src/server/index.ts",
+    "local:client": "vite --config dev/vite.local.config.ts",
+    "local": "npm run local:server & npm run local:client"
+  },
+  "dependencies": {
+    "@devvit/web": "0.15.2",
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource/libre-caslon-text": "^5.3.0",
+    "howler": "^2.2.4",
+    "lucide-react": "^1.78.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zustand": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/howler": "^2.2.13",
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.5.0",
+    "devvit": "0.15.2",
+    "typescript": "~5.8.3",
+    "vite": "^6.3.5",
+    "vitest": "^3.2.0"
+  },
+  "license": "BSD-3-Clause"
+}

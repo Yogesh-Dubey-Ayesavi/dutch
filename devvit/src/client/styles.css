@@ -1,0 +1,31 @@
+@import '@fontsource-variable/bricolage-grotesque/standard.css';
+@import '@fontsource/libre-caslon-text/400.css';
+@import '@fontsource/libre-caslon-text/700.css';
+
+:root { color-scheme: dark; }
+* { -webkit-tap-highlight-color: transparent; }
+html, body, #root { margin: 0; height: 100%; }
+body { background: #121110; color: #F2F0EA; font-family: 'Bricolage Grotesque Variable', system-ui, sans-serif; overflow: hidden; user-select: none; -webkit-user-select: none; }
+button { font: inherit; color: inherit; border: 0; padding: 0; background: none; cursor: pointer; }
+button:disabled { cursor: default; }
+button:focus-visible, [role='button']:focus-visible { outline: 2px solid oklch(0.9 0.17 100); outline-offset: 2px; }
+input { font: inherit; }
+
+@keyframes cl-spin { to { transform: rotate(360deg); } }
+@keyframes cl-blink { 0%, 100% { opacity: .12; } 50% { opacity: .95; } }
+@keyframes cl-pulse { 0% { transform: scale(.55); opacity: .55; } 100% { transform: scale(1.35); opacity: 0; } }
+@keyframes cl-touch { 0% { box-shadow: 0 0 0 2px #fff, 0 0 0 2px rgba(255,255,255,.4); } 100% { box-shadow: 0 0 0 2px #fff, 0 0 0 12px rgba(255,255,255,0); } }
+@keyframes cl-shake { 0%, 100% { translate: 0; } 20% { translate: -6px; } 40% { translate: 5px; } 60% { translate: -4px; } 80% { translate: 3px; } }
+@keyframes cl-flip-classic { 0% { transform: scaleX(1); } 50% { transform: scaleX(0.02); } 100% { transform: scaleX(1); } }
+@keyframes cl-flip-snap { 0% { transform: scaleX(1); } 30% { transform: scaleX(0.02); } 100% { transform: scaleX(1); } }
+@keyframes cl-flip-spin { 0% { transform: rotate(0) scaleX(1); } 50% { transform: rotate(-18deg) scaleX(0.05); } 100% { transform: rotate(0) scaleX(1); } }
+@keyframes cl-flip-fold { 0% { transform: perspective(300px) rotateX(0); } 50% { transform: perspective(300px) rotateX(85deg); } 100% { transform: perspective(300px) rotateX(0); } }
+@keyframes cl-stamp { 0% { transform: rotate(-4deg) scale(1.6); opacity: 0; } 60% { transform: rotate(-4deg) scale(.95); opacity: 1; } 100% { transform: rotate(-4deg) scale(1); } }
+@keyframes cl-rise { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes cl-toast { from { transform: translateY(-10px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes cl-snap { 0% { transform: scale(1.15); } 60% { transform: scale(.96); } 100% { transform: scale(1); } }
+@keyframes cl-fade { from { opacity: 0; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
+}
