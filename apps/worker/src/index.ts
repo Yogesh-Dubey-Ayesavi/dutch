@@ -8,7 +8,7 @@ interface Attachment {id:string;window:number;count:number}
 const json=(body:unknown,status=200,headers:HeadersInit={})=>Response.json(body,{status,headers});
 async function digest(token:string){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token)))).map(v=>v.toString(16).padStart(2,'0')).join('');}
 function shuffled(){const cards=deck();for(let i=cards.length-1;i>0;i--){const limit=Math.floor(0x100000000/(i+1))*(i+1);let n:number;do{n=crypto.getRandomValues(new Uint32Array(1))[0];}while(n>=limit);const j=n%(i+1);[cards[i],cards[j]]=[cards[j],cards[i]];}return cards;}
-function validOrigin(request:Request,env:Env){const origin=request.headers.get('Origin');if(!origin)return true;const url=new URL(request.url);return origin===url.origin||origin===env.ALLOWED_ORIGIN||(['localhost','127.0.0.1'].includes(url.hostname)&&/^http:\/\/(localhost|127\.0\.0\.1):(5050|8787)$/.test(origin));}
+function validOrigin(request:Request,env:Env){const origin=request.headers.get('Origin');if(!origin)return true;const url=new URL(request.url);return origin===url.origin||origin===env.ALLOWED_ORIGIN||(['localhost','127.0.0.1'].includes(url.hostname)&&/^http:\/\/(localhost|127\.0\.0\.1):(8787)$/.test(origin));}
 function profile(body:Record<string,unknown>){if(typeof body.name!=='string'||body.name.trim().length<1||body.name.trim().length>20||/[\u0000-\u001f\u007f]/.test(body.name))throw new Error('Choose a display name with 1–20 characters.');return {name:body.name.trim(),avatar:Number.isInteger(body.avatar)&&Number(body.avatar)>=0&&Number(body.avatar)<8?Number(body.avatar):0};}
 export default {
  async fetch(request:Request,env:Env):Promise<Response>{
